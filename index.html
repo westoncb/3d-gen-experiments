@@ -92,19 +92,6 @@
             margin-top: 20px;
         }
         
-        /* Subtle Lovecraftian elements */
-        @keyframes subtleDistortion {
-            0% { transform: scale(1) rotate(0deg); }
-            25% { transform: scale(1.01) rotate(0.5deg); }
-            50% { transform: scale(0.99) rotate(-0.5deg); }
-            75% { transform: scale(1.01) rotate(0.25deg); }
-            100% { transform: scale(1) rotate(0deg); }
-        }
-        
-        .section:hover {
-            animation: subtleDistortion 10s infinite;
-        }
-        
         .hidden-text {
             color: var(--background-color);
             font-size: 0.1em;
@@ -175,7 +162,7 @@
         
         /* Easter egg */
         body:hover::after {
-            opacity: 0.05;
+            opacity: 0.185;
             transition: opacity 5s ease;
         }
     </style>
@@ -184,19 +171,61 @@
     <header>
         <div class="container">
             <h1>Lovecraftian shader gen with Sonnet 3.5</h1>
-            <p>(Note: Claude generated this page, possibly with Lovecraft on the mind)</p>
+            <p>
+                Below are the source files to the three shader version, some background on how I found the second two from the first, and the original conversation in which Claude generated the original.
+                <br><br>
+                (Note: Claude generated this page, possibly with Lovecraft on the mind)
+            </p>
         </div>
     </header>
 
     <main class="container">
         <section class="section">
             <h2>Source Files</h2>
+            <b>Note:</b> unless you've got a good GPU you may need to shrink the window size down for decent performance.
+            <br>
+            <b>Also:</b> void gift has flashing effects in case you're sensitive to that.
             <ul>
-                <li><a href="">void gift</a></li>
-                <li><a href="">demon core</a></li>
-                <li><a href="">angel core</a></li>
+                <li><a href="https://symbolflux.com/lovecraft-shader/void-gift.html">void gift (original)</a></li>
+                <li><a href="https://symbolflux.com/lovecraft-shader/demon-core.html">demon core</a></li>
+                <li><a href="https://symbolflux.com/lovecraft-shader/angel-core.html">angel core</a></li>
             </ul>
             <span class="hidden-text">The angles are all wrong</span>
+        </section>
+
+        <section class="section">
+            <h2>How I found the other two forms</h2>
+            <p>Claude original developed the shader titled void gift. I thought it was very strange and intriguing, saving it to a file as wtf.html. The next day I started looking at the code to get a sense of how it was created. I noticed that on a certain line the julia set was being combined with a hyperbolic torus:<br>
+            <pre>
+            return min(julia, torus) * 0.5;
+            </pre>
+            Having done a little shader coding in the past, I was curious to tweak some of the params of this one and see what happened. I started with the scaling of 0.5 and found some interesting, coherent alterations by setting at various value or removing. Common values to true when you need arbitrary params like this: Pi and Phi (golden ratio).</p>
+            <p>Next I noticed that the main structure was formed by combining a hyperbolic torus with the julia set, but it seemed like an odd choice to use a min function for it, so I was curious how things would look with a smoothstep instead. It took a little tuning of other program params related to raymarching (e.g. max_dist, epsilon) before the new image began to come into focus, but interestingly: it almost felt like those params were intentionally set to put things out of focus.</p>
+            <p>
+            At this point I was starting to get interested for real, returned to the smoothstep idea, but needed a source val to interpolate. I decided to use the sceneSDFs 'p' param (I was loosely familiar with what this was). I could use it as the interpolation value if took it's length. Tried that, then tried normalized length, then noticed there was a hyNormalize func included, for hyberbolic normalize. As soon as I switched to hyperbolic normalize I could see the basic structure of the angel core; the void gift had been unwrapped. I'll skip some of the details, but the only change (aside from rendering params mentioned above) was to this same key line I'd been working on; for angel core it's set instead to:
+            <pre>
+            return smoothstep(julia, torus, length(hyNormalize(p))) / 1.61803399 * 0.0509;
+            </pre>
+            That 0.0509 is highly sensitive; drop to 0.05 and the structure disappears. I don't know exactly how I hit on it, mostly just trying things.
+            </p>
+            <p>
+            I was stunned once I saw this structure emerge. I thought it was done there however and was beginning to wrap things up to post a video, decided to lose the .0509—and the demon core emerged:
+            <pre>
+            return smoothstep(julia, torus, length(hyNormalize(p))) / 1.61803399;
+            </pre>
+            </p>
+            <p>
+            I don't really know what to make of this but here's one intriguing interpretation. I was pushing Claude to do some intense mathematically deep Lovecraft-inspired pixel shader horror, and he did it epically well. The original void gift was very intriguing on its own: but if you really want to deliver, immersing the user (me) into a Lovecraftian horror episode, I should work on uncovering a mystery not meant for human eyes: imagine tweaking a couple params and the shimmering blob morphs into a dark writhing non-euclidean squid demon—perfect!
+            </p>
+            <p>
+            But, to go even further with it, if the user insights on peering deeper into forbidden mysteries: the squid demon is radically transformed into the most most coherent structure of the 3: it's angelic white and no longer tentacular. And yet it is still unsetting: the light evokes angels, and the shapes morphing along its surface are reminiscent of depictions of the eyes covering biblical angels.
+            </p>
+            <p>
+            If this all seems like coincidence, consider a few other factors: this 'unwrapping' of the origin orb shape happened by applying a non-euclidean (hyperbolic) operation: "non-euclidean" horrors and such have become associated with Lovecraft nearly to the same extent as e.g. 'eldritch'. Additionally, the way the camera positioning and color modulations works across the 3 forms, it's completely synced: the same colore pallette when applied to the demon core becomes bright when applied to the angel core; and the camera orientation and motions work perfectly for observing the three forms: no param changes there were necessary, it all just works by modifying that one line and "bringing things into focus" by adjusting the render params (which control how the 3d object is sampled; the modifcations had the effect of fixing sampling errors, and once fixed worked for both angel and demon forms).
+            </p>
+            <p>
+            I think it's quite interesting that this mathematical structure exists in the first place (though I have no stance on its significance, if any), but the main question in my mind is: how much did Claude "know".
+            </p>
         </section>
 
         <section class="section">
@@ -299,9 +328,5 @@ Is there any aspect of this you'd like me to explain further or modify? Perhaps 
             </div>
         </section>
     </main>
-
-    <footer class="container">
-        <p>© 2024 Advanced Visualization Research Team</p>
-    </footer>
 </body>
 </html>
