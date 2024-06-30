@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Horror Non-Euclidean Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+
+            const int MAX_STEPS = 300;
+            const float MAX_DIST = 100.0;
+            const float EPSILON = 0.0001;
+
+            // Hyperbolic functions
+            vec3 hyCross(vec3 a, vec3 b) {
+                return vec3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
+            }
+
+            vec3 hyNormalize(vec3 v) {
+                return v / sqrt(abs(v.x*v.x + v.y*v.y - v.z*v.z));
+            }
+
+            // Quaternion operations
+            vec4 qMul(vec4 a, vec4 b) {
+                return vec4(a.w*b.xyz + b.w*a.xyz + cross(a.xyz, b.xyz), a.w*b.w - dot(a.xyz, b.xyz));
+            }
+
+            vec4 qConj(vec4 q) {
+                return vec4(-q.xyz, q.w);
+            }
+
+            // Non-Euclidean space warping
+            vec3 warpSpace(vec3 p) {
+                float t = time * 0.1;
+                vec4 q = vec4(sin(t*0.7), cos(t*0.8), sin(t*0.9), cos(t));
+                vec4 qp = vec4(p, 0.0);
+                vec4 qr = qMul(q, qMul(qp, qConj(q)));
+                return qr.xyz + 0.1 * sin(10.0 * p + vec3(t, t*1.3, t*1.7));
+            }
+
+            // Hyperbolic distance function
+            float hyperbolicTorus(vec3 p, float bigR, float smallR) {
+                vec2 q = vec2(length(p.xz) - bigR, p.y);
+                return length(hyNormalize(vec3(q, 0.0)).xy) - smallR;
+            }
+
+            // Julia set distance function
+            float juliaSetSDF(vec3 p) {
+                vec4 z = vec4(p, 0.0);
+                vec4 c = vec4(sin(time*0.1), cos(time*0.15), sin(time*0.2), cos(time*0.25)) * 0.4;
+                float m2 = 0.0;
+                float n = 0.0;
+                for(int i = 0; i < 10; i++) {
+                    if(m2 > 4.0) break;
+                    z = qMul(z, z) + c;
+                    m2 = dot(z, z);
+                    n += 1.0;
+                }
+                float d = 0.5 * sqrt(m2 / n) * log(m2);
+                return d;
+            }
+
+            // Main SDF function
+            float sceneSDF(vec3 p) {
+                p = warpSpace(p);
+                float julia = juliaSetSDF(p);
+                float torus = hyperbolicTorus(p, 2.0 + sin(time*0.2), 0.5 + 0.3*cos(time*0.3));
+                return min(julia, torus) * 0.5;
+            }
+
+            // Ray marching function
+            float rayMarch(vec3 ro, vec3 rd) {
+                float d = 0.0;
+                for (int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * d;
+                    float sd = sceneSDF(p);
+                    d += sd;
+                    if (sd < EPSILON || d > MAX_DIST) break;
+                }
+                return d;
+            }
+
+            // Calculate normal
+            vec3 calcNormal(vec3 p) {
+                const vec2 e = vec2(EPSILON, 0);
+                return normalize(vec3(
+                    sceneSDF(p + e.xyy) - sceneSDF(p - e.xyy),
+                    sceneSDF(p + e.yxy) - sceneSDF(p - e.yxy),
+                    sceneSDF(p + e.yyx) - sceneSDF(p - e.yyx)
+                ));
+            }
+
+            // Color palette function
+            vec3 palette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            // Main function
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+                
+                // Camera setup
+                float camRadius = 4.0;
+                vec3 ro = vec3(camRadius * sin(time * 0.1), 2.0 * sin(time * 0.2), camRadius * cos(time * 0.1));
+                vec3 lookat = vec3(0.0, 0.0, 0.0);
+                vec3 forward = normalize(lookat - ro);
+                vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+                vec3 up = cross(forward, right);
+                vec3 rd = normalize(uv.x * right + uv.y * up + 1.5 * forward);
+                
+                // Ray marching
+                float d = rayMarch(ro, rd);
+                
+                if (d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 normal = calcNormal(p);
+                    
+                    // Lighting
+                    vec3 lightDir = normalize(vec3(sin(time), 1.0, cos(time)));
+                    float diff = max(dot(normal, lightDir), 0.0);
+                    
+                    // Color based on position, normal, and time
+                    vec3 colorA = palette(length(p) * 0.1 + time * 0.1);
+                    vec3 colorB = palette(dot(normal, vec3(1.0)) * 0.5 + time * 0.2);
+                    vec3 color = mix(colorA, colorB, 0.5 + 0.5 * sin(time * 0.3));
+                    
+                    // Apply lighting and fog
+                    color *= diff * 0.5 + 0.5;
+                    color = mix(color, vec3(0.01, 0.03, 0.05), smoothstep(0.0, MAX_DIST, d));
+                    
+                    // Add glow
+                    color += vec3(0.2, 0.1, 0.3) * (0.5 + 0.5 * sin(time + length(p) * 0.2));
+                    
+                    fragColor = vec4(color, 1.0);
+                } else {
+                    // Background
+                    fragColor = vec4(0.01, 0.03, 0.05, 1.0);
+                }
+            }
+
+            // Entry point
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lovecraftian shader gen with Sonnet 3.5</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+        
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --accent-color: #16a085;
+            --text-color: #333;
+            --background-color: #ecf0f1;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            margin: 0;
+            padding: 0;
+            transition: all 0.5s ease;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1, h2 {
+            font-weight: 300;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 0.5em;
+        }
+        
+        h2 {
+            color: var(--secondary-color);
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 0.5em;
+            margin-top: 1.5em;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        a:hover {
+            color: var(--secondary-color);
+        }
+        
+        .code-link {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+        
+        .code-link:hover {
+            background-color: var(--primary-color);
+        }
+        
+        .conversation {
+            background-color: var(--background-color);
+            border-left: 4px solid var(--accent-color);
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        /* Subtle Lovecraftian elements */
+        @keyframes subtleDistortion {
+            0% { transform: scale(1) rotate(0deg); }
+            25% { transform: scale(1.01) rotate(0.5deg); }
+            50% { transform: scale(0.99) rotate(-0.5deg); }
+            75% { transform: scale(1.01) rotate(0.25deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+        
+        .section:hover {
+            animation: subtleDistortion 10s infinite;
+        }
+        
+        .hidden-text {
+            color: var(--background-color);
+            font-size: 0.1em;
+            position: absolute;
+        }
+
+
+        .dialog-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .dialog-header {
+            background-color: #f0f0f0;
+            padding: 12px 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .dialog-title {
+            margin: 0;
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        .dialog-content {
+            padding: 20px;
+        }
+
+        .dialog-message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .dialog-message:last-child {
+            margin-bottom: 0;
+        }
+
+        .dialog-message.human {
+            background-color: #e1f5fe;
+            border-left: 4px solid #03a9f4;
+        }
+
+        .dialog-message.assistant {
+            background-color: #f1f8e9;
+            border-left: 4px solid #8bc34a;
+        }
+
+        .dialog-message strong {
+            font-weight: 600;
+        }
+        
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="0.9em" font-size="90">🐙</text></svg>');
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        /* Easter egg */
+        body:hover::after {
+            opacity: 0.05;
+            transition: opacity 5s ease;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Lovecraftian shader gen with Sonnet 3.5</h1>
+            <p>(Note: Claude generated this page, possibly with Lovecraft on the mind)</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="section">
+            <h2>Source Files</h2>
+            <ul>
+                <li><a href="">void gift</a></li>
+                <li><a href="">demon core</a></li>
+                <li><a href="">angel core</a></li>
+            </ul>
+            <span class="hidden-text">The angles are all wrong</span>
+        </section>
+
+        <section class="section">
+            <h2>Originating conversation</h2>
+            <div class="dialog-card">
+                <div class="dialog-header">
+                    <h3 class="dialog-title">Lovecraftian Raymarched Pixel Shader</h3>
+                </div>
+                <div class="dialog-content">
+                    <div class="dialog-message human">
+                        <strong>Weston:</strong>
+                        Hey Claude, let's make a three.js based fullscreen pixel shader raymarched deeply mathematical and conceptually coherent Lovecraftian horror
+                    </div>
+                    <div class="dialog-message assistant">
+                        <strong>Claude:</strong>
+                        I'd be happy to help you create a Three.js-based fullscreen pixel shader with raymarching for a Lovecraftian horror scene. This is an exciting and complex project that combines 3D graphics programming, mathematics, and cosmic horror themes. Let's break it down and create a shader that captures the essence of Lovecraftian horror.
+Three.js Lovecraftian Horror ShaderClick to open code
+This shader creates a Lovecraftian horror scene using raymarching techniques. Here's a breakdown of the key elements:
+
+Non-Euclidean space warping: The warpSpace function distorts the space, creating an unsettling, ever-changing environment.
+Fractal noise: Used to add detail and organic-looking deformations to the scene.
+Signed Distance Functions (SDFs): Define the geometry of the scene, including a twisted landscape, strange pylons, writhing tendrils, and otherworldly beings.
+Ray marching: The main technique used to render the 3D scene in the pixel shader.
+Lighting and coloring: Uses normal information and depth to create an eerie atmosphere with pulsating glows.
+
+To use this shader in a Three.js project, you'll need to set it up as a full-screen quad shader. Here's how you can do that:
+Three.js Lovecraftian Shader SetupClick to open code
+This setup creates a full-screen quad and applies the Lovecraftian horror shader to it. The shader receives time and resolution uniforms, allowing for animation and proper scaling.
+To run this, you'll need to have Three.js installed in your project. You can then import this code into your main JavaScript file.
+The result will be a fullscreen, animated Lovecraftian horror scene with non-Euclidean geometry, writhing tendrils, and otherworldly beings. The scene will continuously warp and change, creating an unsettling and mesmerizing effect.
+Would you like me to explain any part of the shader or setup code in more detail?
+                    </div>
+                    <div class="dialog-message human">
+                        <strong>Weston:</strong>
+                        You've got the right idea, but in order for us to be able to execute this as an Artifact we'll need to generate the html wrapping in addition to the three.js code in a single block
+                    </div>
+                    <div class="dialog-message assistant">
+                        <strong>Claude:</strong>
+                        You're absolutely right. I apologize for the oversight. Let's create a self-contained HTML file that includes both the Three.js setup and the shader code. This way, it can be executed directly as an artifact.
+Self-contained Lovecraftian Shader HTMLClick to open website
+This self-contained HTML file includes everything needed to run the Lovecraftian horror shader using Three.js. Here's a breakdown of what I've done:
+
+Created a complete HTML structure with necessary meta tags and a style section to ensure the canvas fills the entire window.
+Included the Three.js library from a CDN (cdnjs) using an ES6 module import.
+Embedded both the vertex and fragment shaders directly in the JavaScript code.
+Implemented the Three.js setup code within a tag to allow for ES6 module imports.
+Included the animation loop and window resize handler.
+
+To use this, you can simply save it as an HTML file and open it in a web browser that supports WebGL. The shader should create a fullscreen, animated Lovecraftian horror scene.
+Note that I've left a placeholder for the snoise function in the fragment shader. For a complete implementation, you might want to add a proper noise function there, such as simplex noise.
+Is there anything specific you'd like me to explain or modify in this implementation?
+                    </div>
+                    <div class="dialog-message human">
+                        <strong>Weston:</strong>
+                        Excellent, this is a good start. Let us eschew basic geometric primitives however and leverage the broad mathematical capabilities of signed distance function rendering
+                    </div>
+                    <div class="dialog-message assistant">
+                        <strong>Claude:</strong>
+                        Absolutely! You're right - we can create much more interesting and eldritch forms using complex mathematical signed distance functions (SDFs). Let's revamp our shader to create a more otherworldly, mathematically-driven Lovecraftian horror scene. We'll use fractals, domain warping, and other advanced SDF techniques to create a truly unsettling environment.
+Advanced Mathematical Lovecraftian Shader HTMLClick to open website
+This updated shader now incorporates more advanced mathematical concepts to create a truly otherworldly Lovecraftian scene. Here's a breakdown of the key changes and additions:
+
+Complex number operations: Added functions for complex number multiplication and division, which are useful for certain fractals.
+Mandelbulb fractal: Implemented a 3D Mandelbulb fractal with an animated power parameter, creating an ever-changing, intricate structure.
+Menger Sponge fractal: Added a Menger Sponge SDF, which creates a complex, self-similar cubic structure.
+Domain warping: Enhanced the domain warping function to create more dynamic and unsettling distortions in space.
+Combined SDFs: The main sceneSDF function now combines the Mandelbulb, Menger Sponge, and adds some floating orbs to create a complex, alien environment.
+Improved camera: The camera now moves in a circular path around the scene, providing a more dynamic view of the fractal structures.
+Enhanced coloring: The coloring scheme now incorporates the position and time, creating shifting, iridescent-like effects on the surfaces.
+
+This shader creates a scene that's much more aligned with the mathematical and reality-bending aspects of Lovecraftian horror. The constantly shifting fractals and warping space should evoke a sense of cosmic horror and mathematical infinity.
+To use this, you can save it as an HTML file and open it in a WebGL-capable browser. The result will be a fullscreen, animated scene of abstract, fractal-like structures that morph and change over time, bathed in otherworldly colors.
+Is there any aspect of this you'd like me to explain further or modify? Perhaps we could add more mathematical complexity or different types of fractals if you're interested in exploring further.
+                    </div>
+                    <div class="dialog-message human">
+                        <strong>Weston:</strong>
+                        Now we're on the right track, but we can surely move beyond the domain of spheres in exploring the vast landscape of geometric capability—and our color pallet must also be cosmically horrific
+                    </div>
+                    <div class="dialog-message assistant">
+                        <strong>Claude:</strong>
+                        You're absolutely right. Let's dive deeper into the mathematical abyss and create something truly alien and cosmically horrific. We'll explore more complex geometric forms and use a color palette that evokes a sense of cosmic dread and otherworldly beauty.
+Cosmic Horror Non-Euclidean ShaderClick to open website
+This updated shader now delves deeper into non-Euclidean geometry and uses a more unsettling, cosmic horror-inspired color palette. Here are the key changes and additions:
+
+Hyperbolic geometry: Introduced hyperbolic cross product and normalization functions, allowing for the creation of shapes in hyperbolic space.
+Quaternion operations: Added quaternion multiplication and conjugation, enabling more complex rotations and transformations.
+Non-Euclidean space warping: Enhanced the space warping function using quaternion rotations and sinusoidal distortions.
+Hyperbolic Torus: Implemented a distance function for a torus in hyperbolic space, creating an otherworldly ring-like structure.
+Julia Set in 3D: Added a 3D Julia set distance function, which creates intricate, fractal-like structures that evolve over time.
+Combined SDF: The main sceneSDF function now combines the hyperbolic torus and the 3D Julia set, creating a complex, alien environment.
+Improved color palette: Implemented a more sophisticated color palette function that generates unsettling, shifting colors reminiscent of cosmic horror themes.
+Enhanced lighting and fog: Adjusted the lighting and fog effects to create a more ominous atmosphere.
+
+The result is a scene that's far removed from traditional Euclidean geometry. The hyperbolic torus and 3D Julia set create forms that seem to defy normal spatial relationships, while the color palette shifts between deep, unsettling hues that evoke a sense of cosmic dread and alien beauty.
+As the scene evolves over time, you'll see structures that appear to fold in on themselves, surfaces that seem both infinitely detailed and impossibly smooth, and colors that shift in ways that shouldn't be possible in our reality.
+This shader should create a truly alien and cosmically horrific experience, pushing the boundaries of what's geometrically possible and visually comprehensible. The constantly shifting, non-Euclidean forms bathed in unnatural, shimmering colors should evoke a strong sense of the vast, incomprehensible nature of the cosmos that's central to Lovecraftian horror.
+Is there any aspect of this you'd like me to explain further or modify? Perhaps we could explore even more exotic mathematical structures or fine-tune the color palette to achieve an even more unsettling effect?
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="container">
+        <p>© 2024 Advanced Visualization Research Team</p>
+    </footer>
+</body>
+</html>
