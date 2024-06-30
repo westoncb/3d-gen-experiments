@@ -196,23 +196,17 @@
         <section class="section">
             <h2>How I found the other two forms</h2>
             <p>Claude original developed the shader titled void gift. I thought it was very strange and intriguing, saving it to a file as wtf.html. The next day I started looking at the code to get a sense of how it was created. I noticed that on a certain line the julia set was being combined with a hyperbolic torus:<br>
-            <pre>
-            return min(julia, torus) * 0.5;
-            </pre>
+            <pre>return min(julia, torus) * 0.5;</pre>
             Having done a little shader coding in the past, I was curious to tweak some of the params of this one and see what happened. I started with the scaling of 0.5 and found some interesting, coherent alterations by setting at various value or removing. Common values to true when you need arbitrary params like this: Pi and Phi (golden ratio).</p>
             <p>Next I noticed that the main structure was formed by combining a hyperbolic torus with the julia set, but it seemed like an odd choice to use a min function for it, so I was curious how things would look with a smoothstep instead. It took a little tuning of other program params related to raymarching (e.g. max_dist, epsilon) before the new image began to come into focus, but interestingly: it almost felt like those params were intentionally set to put things out of focus.</p>
             <p>
             At this point I was starting to get interested for real, returned to the smoothstep idea, but needed a source val to interpolate. I decided to use the sceneSDFs 'p' param (I was loosely familiar with what this was). I could use it as the interpolation value if took it's length. Tried that, then tried normalized length, then noticed there was a hyNormalize func included, for hyberbolic normalize. As soon as I switched to hyperbolic normalize I could see the basic structure of the angel core; the void gift had been unwrapped. I'll skip some of the details, but the only change (aside from rendering params mentioned above) was to this same key line I'd been working on; for angel core it's set instead to:
-            <pre>
-            return smoothstep(julia, torus, length(hyNormalize(p))) / 1.61803399 * 0.0509;
-            </pre>
+            <pre>return smoothstep(julia, torus, length(hyNormalize(p))) / 1.61803399 * 0.0509;</pre>
             That 0.0509 is highly sensitive; drop to 0.05 and the structure disappears. I don't know exactly how I hit on it, mostly just trying things.
             </p>
             <p>
             I was stunned once I saw this structure emerge. I thought it was done there however and was beginning to wrap things up to post a video, decided to lose the .0509—and the demon core emerged:
-            <pre>
-            return smoothstep(julia, torus, length(hyNormalize(p))) / 1.61803399;
-            </pre>
+            <pre>return smoothstep(julia, torus, length(hyNormalize(p))) / 1.61803399;</pre>
             </p>
             <p>
             I don't really know what to make of this but here's one intriguing interpretation. I was pushing Claude to do some intense mathematically deep Lovecraft-inspired pixel shader horror, and he did it epically well. The original void gift was very intriguing on its own: but if you really want to deliver, immersing the user (me) into a Lovecraftian horror episode, I should work on uncovering a mystery not meant for human eyes: imagine tweaking a couple params and the shimmering blob morphs into a dark writhing non-euclidean squid demon—perfect!
