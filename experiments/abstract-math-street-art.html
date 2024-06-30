@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Street Art Horror: LA Meets the Elder Gods</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let streetArtSingularity, urbanTentacles, graffitiBG, surrealistObjects;
+        let clock = new THREE.Clock();
+
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            camera.position.z = 5;
+        }
+
+        function createStreetArtSingularity() {
+            const geometry = new THREE.SphereGeometry(1, 128, 128);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    varying vec3 vPosition;
+                    
+                    void main() {
+                        vUv = uv;
+                        vPosition = position;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform vec2 resolution;
+                    varying vec2 vUv;
+                    varying vec3 vPosition;
+
+                    // Noise function
+                    float noise(vec3 p) {
+                        vec3 i = floor(p);
+                        vec3 f = fract(p);
+                        f = f * f * (3.0 - 2.0 * f);
+                        return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                                       mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                                   mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                                       mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+                    }
+
+                    float hash(vec3 p) {
+                        p = fract(p * 0.3183099 + 0.1);
+                        p *= 17.0;
+                        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+                    }
+
+                    void main() {
+                        vec2 uv = gl_FragCoord.xy / resolution.xy;
+                        vec3 p = vPosition * 4.0 + time * 0.1;
+                        
+                        // Create a vibrant, shifting color palette
+                        vec3 color1 = vec3(0.5, 0.8, 0.9);  // Cyan
+                        vec3 color2 = vec3(0.9, 0.2, 0.5);  // Magenta
+                        vec3 color3 = vec3(1.0, 0.7, 0.0);  // Yellow
+                        
+                        float n = noise(p);
+                        vec3 color = mix(color1, color2, n);
+                        color = mix(color, color3, noise(p * 2.0));
+                        
+                        // Add graffiti-like patterns
+                        float pattern = step(0.5, fract(n * 10.0));
+                        color = mix(color, vec3(1.0) - color, pattern * 0.3);
+                        
+                        // Event horizon effect
+                        float edge = smoothstep(0.8, 1.0, length(vPosition));
+                        color = mix(color, vec3(0.0), edge);
+                        
+                        // Pulsating glow
+                        float glow = 0.5 + 0.5 * sin(time * 3.0 + length(vPosition) * 10.0);
+                        color += vec3(0.2, 0.1, 0.3) * glow;
+
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            streetArtSingularity = new THREE.Mesh(geometry, material);
+            scene.add(streetArtSingularity);
+        }
+
+        function createUrbanTentacles() {
+            const geometry = new THREE.TubeGeometry(
+                new THREE.CatmullRomCurve3([
+                    new THREE.Vector3(-2, 0, 0),
+                    new THREE.Vector3(-1, 1, 1),
+                    new THREE.Vector3(0, 0, 2),
+                    new THREE.Vector3(1, -1, 1),
+                    new THREE.Vector3(2, 0, 0)
+                ]),
+                64,  // tubular segments
+                0.1,  // radius
+                8,   // radial segments
+                false // closed
+            );
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 }
+                },
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        vUv = uv;
+                        vPosition = position;
+                        
+                        // Writhing motion
+                        vec3 p = position;
+                        p.x += sin(2.0 * position.y + time) * 0.1;
+                        p.y += cos(2.0 * position.z + time) * 0.1;
+                        p.z += sin(2.0 * position.x + time) * 0.1;
+
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        // Create a neon-like effect
+                        vec3 baseColor = vec3(0.1, 0.9, 0.3);  // Neon green
+                        float glow = 0.5 + 0.5 * sin(vUv.x * 20.0 - time * 3.0);
+                        
+                        // Add graffiti-style patterns
+                        float pattern = step(0.5, fract(vUv.x * 10.0));
+                        baseColor = mix(baseColor, vec3(1.0, 0.2, 0.8), pattern * 0.5);  // Mix with neon pink
+                        
+                        vec3 color = baseColor * (0.5 + 0.5 * glow);
+                        
+                        gl_FragColor = vec4(color, 0.7);
+                    }
+                `,
+                transparent: true
+            });
+
+            for (let i = 0; i < 10; i++) {
+                const tentacle = new THREE.Mesh(geometry, material);
+                tentacle.position.set(
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2
+                );
+                tentacle.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                scene.add(tentacle);
+            }
+        }
+
+        function createGraffitiBG() {
+            const geometry = new THREE.PlaneGeometry(20, 20);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform vec2 resolution;
+                    varying vec2 vUv;
+
+                    float random(vec2 st) {
+                        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+                    }
+
+                    float noise(vec2 st) {
+                        vec2 i = floor(st);
+                        vec2 f = fract(st);
+                        float a = random(i);
+                        float b = random(i + vec2(1.0, 0.0));
+                        float c = random(i + vec2(0.0, 1.0));
+                        float d = random(i + vec2(1.0, 1.0));
+                        vec2 u = f * f * (3.0 - 2.0 * f);
+                        return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+                    }
+
+                    void main() {
+                        vec2 st = gl_FragCoord.xy / resolution.xy;
+                        st.x *= resolution.x / resolution.y;
+                        
+                        vec3 color = vec3(0.0);
+                        
+                        // Create a layered, graffiti-like background
+                        float n = noise(st * 10.0 + time * 0.1);
+                        color = mix(vec3(0.2, 0.0, 0.4), vec3(0.8, 0.2, 0.5), n);  // Purple to pink
+                        
+                        // Add some "tags"
+                        float tag = step(0.7, noise(st * 20.0 + time * 0.05));
+                        color = mix(color, vec3(1.0, 0.9, 0.0), tag * 0.8);  // Bright yellow tags
+                        
+                        // Swirling effect
+                        float swirl = sin(st.x * 10.0 + st.y * 10.0 + time);
+                        color += vec3(0.1, 0.1, 0.3) * swirl;
+
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            graffitiBG = new THREE.Mesh(geometry, material);
+            graffitiBG.position.z = -10;
+            scene.add(graffitiBG);
+        }
+
+        function createSurrealistObjects() {
+            const geometry = new THREE.TorusKnotGeometry(0.5, 0.2, 100, 16);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 }
+                },
+                vertexShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        vPosition = position;
+                        vec3 p = position;
+                        
+                        // Surrealist deformation
+                        float deform = sin(time + p.x * 10.0) * cos(time + p.y * 10.0) * sin(time + p.z * 10.0);
+                        p += normal * deform * 0.1;
+
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        // Create a shifting, iridescent effect
+                        vec3 color = 0.5 + 0.5 * cos(time + vPosition.xyx + vec3(0, 2, 4));
+                        
+                        // Add some "drips"
+                        float drip = step(0.98, fract(vPosition.y * 10.0 - time));
+                        color = mix(color, vec3(1.0, 0.2, 0.8), drip);  // Neon pink drips
+
+                        gl_FragColor = vec4(color, 0.8);
+                    }
+                `,
+                transparent: true
+            });
+
+            for (let i = 0; i < 5; i++) {
+                const object = new THREE.Mesh(geometry, material);
+                object.position.set(
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2
+                );
+                object.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                scene.add(object);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+
+            scene.traverse((object) => {
+                if (object.isMesh && object.material.uniforms) {
+                    object.material.uniforms.time.value = time;
+                }
+            });
+
+            // Rotate the camera in a psychedelic pattern
+            camera.position.x = Math.sin(time * 0.5) * 5;
+            camera.position.y = Math.cos(time * 0.4) * 3;
+            camera.position.z = Math.sin(time * 0.3) * 5 + 7;
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+
+        function init() {
+            initScene();
+            createStreetArtSingularity();
+            createUrbanTentacles();
+            createGraffitiBG();
+            createSurrealistObjects();
+            animate();
+        }
+
+        init();
+    </script>
+</body>
+</html>
