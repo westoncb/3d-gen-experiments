@@ -13,7 +13,7 @@
 <body>
     <div id="controls">
         <label for="dimensionSlider">Dimensional Shift:</label>
-        <input type="range" id="dimensionSlider" min="0" max="4" step="0.01" value="0.5">
+        <input type="range" id="dimensionSlider" min="0" max="4" step="0.01" value="0.0">
     </div>
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
@@ -48,7 +48,7 @@
             vec3 fractalFold(vec3 z) {
                 for(int i = 0; i < 5; i++) {
                     z.xy = abs(z.xy);
-                    z = z * 0.25 - 0.25;
+                    z = z * 1.0 - 0.5;
                     z.xy *= rot2D(time * 0.1);
                 }
                 return z;
@@ -152,7 +152,7 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                dimensionShift: { value: 4 }
+                dimensionShift: { value: (0) }
             }
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -161,7 +161,7 @@
         // Animation loop
         function animate(time) {
             requestAnimationFrame(animate);
-            material.uniforms.time.value = time * 0.001;
+            material.uniforms.time.value = time * 0.00015;
             renderer.render(scene, camera);
         }
         animate(0);
