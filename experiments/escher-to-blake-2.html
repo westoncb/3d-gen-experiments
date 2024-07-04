@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cosmic Dimension Shifter</title>
+    <title>Escher to Blake Transition</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -12,8 +12,8 @@
 </head>
 <body>
     <div id="controls">
-        <label for="dimensionSlider">Dimensional Shift:</label>
-        <input type="range" id="dimensionSlider" min="0" max="1" step="0.01" value="0.5">
+        <label for="transitionSlider">Escher to Blake:</label>
+        <input type="range" id="transitionSlider" min="0" max="1" step="0.01" value="0">
     </div>
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
@@ -29,46 +29,55 @@
         const fragmentShader = `
             uniform float time;
             uniform vec2 resolution;
-            uniform float dimensionShift;
+            uniform float transition;
 
             #define MAX_STEPS 100
             #define MAX_DIST 100.0
             #define SURF_DIST 0.001
+            #define PI 3.141592
 
             mat2 rot2D(float angle) {
                 float s = sin(angle), c = cos(angle);
                 return mat2(c, -s, s, c);
             }
 
-            float smin(float a, float b, float k) {
-                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-                return mix(b, a, h) - k * h * (1.0 - h);
+            float sdBox(vec3 p, vec3 b) {
+                vec3 q = abs(p) - b;
+                return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
             }
 
-            vec3 fractalFold(vec3 z) {
-                for(int i = 0; i < 5; i++) {
-                    z.xy = abs(z.xy);
-                    z = z * 2.0 - 1.0;
-                    z.xy *= rot2D(time * 0.1);
-                }
-                return z;
+            float sdSphere(vec3 p, float r) {
+                return length(p) - r;
+            }
+
+            vec2 foldRotate(vec2 p, float s) {
+                float a = PI / s - atan(p.x, p.y);
+                float n = PI / s * floor((s * a + PI) / (2.0 * PI));
+                p = rot2D(n * 2.0) * p;
+                return p;
+            }
+
+            float escherPattern(vec3 p) {
+                p.yz = foldRotate(p.yz, 7.0);
+                float box = sdBox(p, vec3(1.0, 0.1, 1.0));
+                return mod(box, p.x);
+            }
+
+            float blakePattern(vec3 p) {
+                float t = time * 0.2;
+                vec3 q = p;
+                q.xy *= rot2D(t);
+                q.yz *= rot2D(t * 0.7);
+                float sphere = sdSphere(q, 1.0);
+                float twist = sin(q.x*5.0 + t) * sin(q.y*5.0 + t) * sin(q.z*5.0 + t) * 0.1;
+                return sphere * twist;
             }
 
             float sceneSDF(vec3 p) {
-                vec3 q = p;
-                q.xy *= rot2D(time * 0.2);
-                q.yz *= rot2D(time * 0.15);
-                
-                float dimensionalWarp = sin(length(q) * 3.0 - time) * dimensionShift;
-                q += fractalFold(q) * dimensionalWarp;
-
-                float sphere = length(q) - 1.0;
-                float twists = cos(q.x*10.0) * cos(q.y*10.0) * cos(q.z*10.0) * 0.1;
-                float twistedSphere = sphere + twists;
-
-                float planes = max(max(abs(q.x), abs(q.y)), abs(q.z)) - 1.0;
-                
-                return smin(twistedSphere, planes, 0.5);
+                float escher = escherPattern(p);
+                float blake = blakePattern(p);
+                // return escher;
+                return mix(escher, blake, smoothstep(0.0, 1.0, transition));
             }
 
             vec3 getNormal(vec3 p) {
@@ -90,12 +99,12 @@
                 return normalize(i);
             }
 
-            vec3 colorPalette(float t) {
-                vec3 a = vec3(0.5, 0.5, 0.5);
-                vec3 b = vec3(0.5, 0.5, 0.5);
-                vec3 c = vec3(1.0, 1.0, 1.0);
-                vec3 d = vec3(0.263, 0.416, 0.557);
-                return a + b * cos(6.28318 * (c * t + d + dimensionShift));
+            vec3 escherPalette(float t) {
+                return vec3(0.5) + 0.5*cos(6.28318*(vec3(1.0,2.0,3.0)*t + vec3(0.0,0.1,0.2)));
+            }
+
+            vec3 blakePalette(float t) {
+                return vec3(0.5) + 0.5*cos(6.28318*(vec3(1.0,1.5,2.0)*t + vec3(0.0,0.3,0.6)));
             }
 
             void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -119,7 +128,9 @@
                     vec3 r = reflect(rd, n);
 
                     float dif = dot(n, normalize(vec3(1,2,3)))*.5+.5;
-                    col = colorPalette(length(p) * 0.1 + time * 0.05);
+                    vec3 escherCol = escherPalette(length(p) * 0.1 + time * 0.1);
+                    vec3 blakeCol = blakePalette(length(p) * 0.1 + time * 0.05);
+                    col = mix(escherCol, blakeCol, smoothstep(0.0, 1.0, transition));
                     col *= dif;
 
                     float fresnel = pow(1.0 + dot(rd, n), 4.0);
@@ -152,7 +163,7 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                dimensionShift: { value: 0.5 }
+                transition: { value: 0 }
             }
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -174,10 +185,10 @@
             material.uniforms.resolution.value.set(width, height);
         });
 
-        // Handle dimension shift slider
-        const dimensionSlider = document.getElementById('dimensionSlider');
-        dimensionSlider.addEventListener('input', (event) => {
-            material.uniforms.dimensionShift.value = parseFloat(event.target.value);
+        // Handle transition slider
+        const transitionSlider = document.getElementById('transitionSlider');
+        transitionSlider.addEventListener('input', (event) => {
+            material.uniforms.transition.value = parseFloat(event.target.value);
         });
     </script>
 </body>

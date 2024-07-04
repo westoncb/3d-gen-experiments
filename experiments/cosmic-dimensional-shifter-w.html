@@ -63,7 +63,7 @@
                 q += fractalFold(q) * dimensionalWarp;
 
                 float sphere = length(q) - 1.0;
-                float twists = cos(q.x*10.0) * cos(q.y*10.0) * cos(q.z*10.0) * 0.1;
+                float twists = cos(q.x*10.0) * cos(q.y*15.0) * cos(q.z*10.0) * 0.1;
                 float twistedSphere = sphere * twists;
 
                 float planes = max(max(abs(q.x), abs(q.y)), abs(q.z)) - 1.0;
