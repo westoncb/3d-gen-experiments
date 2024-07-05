@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passive Eldritch Horror Experience</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #800080;
+            font-family: "Courier New", monospace;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Witness the Unraveling of Reality</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let clock = new THREE.Clock();
+        let uniforms;
+        let audioContext, oscillator, gainNode;
+
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            camera.position.z = 5;
+
+            uniforms = {
+                time: { value: 1.0 },
+                resolution: { value: new THREE.Vector2() },
+                madnessLevel: { value: 0.0 }
+            };
+
+            initAudio();
+        }
+
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            oscillator = audioContext.createOscillator();
+            gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(50, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            oscillator.start();
+        }
+
+        function createEldritchGeometry() {
+            const geometry = new THREE.IcosahedronGeometry(1, 4);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    uniform float madnessLevel;
+                    varying vec3 vNormal;
+                    varying vec2 vUv;
+                    
+                    float noise(vec3 p) {
+                        return fract(sin(dot(p, vec3(12.9898, 78.233, 45.5432))) * 43758.5453);
+                    }
+
+                    void main() {
+                        vNormal = normal;
+                        vUv = uv;
+                        vec3 p = position;
+                        float n = noise(p + time * 0.1);
+                        p += normal * (sin(time + n * 10.0) * 0.1 + madnessLevel * 0.5);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float madnessLevel;
+                    varying vec3 vNormal;
+                    varying vec2 vUv;
+
+                    void main() {
+                        vec3 color = 0.5 + 0.5 * cos(time * 0.1 + vUv.xyx + vec3(0, 2, 4));
+                        color *= 0.5 + 0.5 * dot(vNormal, vec3(0.0, 1.0, 0.0));
+                        color = mix(color, vec3(1.0, 0.0, 0.0), madnessLevel * 0.5);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                wireframe: true
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+        }
+
+        function createBackgroundVoid() {
+            const geometry = new THREE.PlaneGeometry(20, 20);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float madnessLevel;
+                    varying vec2 vUv;
+
+                    float random(vec2 st) {
+                        return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+                    }
+
+                    float noise(vec2 st) {
+                        vec2 i = floor(st);
+                        vec2 f = fract(st);
+                        float a = random(i);
+                        float b = random(i + vec2(1.0, 0.0));
+                        float c = random(i + vec2(0.0, 1.0));
+                        float d = random(i + vec2(1.0, 1.0));
+                        vec2 u = f * f * (3.0 - 2.0 * f);
+                        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+                    }
+
+                    float fbm(vec2 st) {
+                        float value = 0.0;
+                        float amplitude = 0.5;
+                        float frequency = 0.0;
+                        for (int i = 0; i < 6; i++) {
+                            value += amplitude * noise(st);
+                            st *= 2.0;
+                            amplitude *= 0.5;
+                        }
+                        return value;
+                    }
+
+                    void main() {
+                        vec2 st = vUv * 3.0;
+                        vec3 color = vec3(0.0);
+                        vec2 q = vec2(0.);
+                        q.x = fbm(st + 0.00 * time);
+                        q.y = fbm(st + vec2(1.0));
+                        vec2 r = vec2(0.);
+                        r.x = fbm(st + 1.0 * q + vec2(1.7, 9.2) + 0.15 * time);
+                        r.y = fbm(st + 1.0 * q + vec2(8.3, 2.8) + 0.126 * time);
+                        float f = fbm(st + r);
+                        color = mix(
+                            vec3(0.101961, 0.619608, 0.666667),
+                            vec3(0.666667, 0.666667, 0.498039),
+                            clamp((f * f) * 4.0, 0.0, 1.0)
+                        );
+                        color = mix(
+                            color,
+                            vec3(0, 0, 0.164706),
+                            clamp(length(q), 0.0, 1.0)
+                        );
+                        color = mix(
+                            color,
+                            vec3(0.666667, 1, 1),
+                            clamp(length(r.x), 0.0, 1.0)
+                        );
+                        color = (f * f * f + 0.6 * f * f + 0.5 * f) * color;
+                        color = mix(color, vec3(1.0, 0.0, 0.0), madnessLevel * 0.5);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.z = -10;
+            scene.add(mesh);
+        }
+
+        function updateAudio(madnessLevel) {
+            const frequency = 50 + madnessLevel * 200;
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.1 + madnessLevel * 0.2, audioContext.currentTime);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            uniforms.time.value = time;
+
+            // Gradually increase madness level over time
+            const madnessLevel = Math.min(time / 60, 1.0);  // Reaches maximum after 60 seconds
+            uniforms.madnessLevel.value = madnessLevel;
+
+            updateAudio(madnessLevel);
+
+            // Rotate and distort the camera view
+            camera.position.x = Math.sin(time * 0.1) * (1 + madnessLevel);
+            camera.position.y = Math.cos(time * 0.1) * (1 + madnessLevel);
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.resolution.value.x = renderer.domElement.width;
+            uniforms.resolution.value.y = renderer.domElement.height;
+        }
+
+        function init() {
+            initScene();
+            createEldritchGeometry();
+            createBackgroundVoid();
+            animate();
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        init();
+    </script>
+</body>
+</html>

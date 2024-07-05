@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Horror: The Ninth Gate's Arcane Geometry</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const fragmentShader = `
+            #ifdef GL_FRAGMENT_PRECISION_HIGH
+            precision highp float;
+            #else
+            precision mediump float;
+            #endif
+
+            uniform float time;
+            uniform vec2 resolution;
+
+            #define MAX_STEPS 200
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+            #define PI 3.14159265359
+
+            float hash(float n) { return fract(sin(n) * 1e4); }
+            float noise(vec3 x) {
+                vec3 p = floor(x);
+                vec3 f = fract(x);
+                f = f*f*(3.0-2.0*f);
+                float n = p.x + p.y*157.0 + 113.0*p.z;
+                return mix(mix(mix(hash(n+0.0), hash(n+1.0), f.x),
+                               mix(hash(n+157.0), hash(n+158.0), f.x), f.y),
+                           mix(mix(hash(n+113.0), hash(n+114.0), f.x),
+                               mix(hash(n+270.0), hash(n+271.0), f.x), f.y), f.z);
+            }
+
+            float fbm(vec3 p) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                float frequency = 1.0;
+                for (int i = 0; i < 6; i++) {
+                    value += amplitude * noise(p * frequency);
+                    amplitude *= 0.5;
+                    frequency *= 2.0;
+                }
+                return value;
+            }
+
+            void pR(inout vec2 p, float a) {
+                p = cos(a)*p + sin(a)*vec2(p.y, -p.x);
+            }
+
+            // Arcane symbol function
+            float arcaneSymbol(vec2 uv, float scale) {
+                vec2 id = floor(uv * scale);
+                uv = fract(uv * scale) - 0.5;
+                
+                float r = length(uv);
+                float a = atan(uv.y, uv.x);
+                
+                float f = smoothstep(0.2, 0.21, cos(a*5.0)) * smoothstep(0.4, 0.41, r);
+                f += smoothstep(0.36, 0.35, r);
+                f += smoothstep(0.01, 0.0, abs(r - 0.3));
+                
+                return f * (0.5 + 0.5 * sin(hash(id.x * 100.0 + id.y) * 2.0 * PI));
+            }
+
+            float shape(vec3 p) {
+                vec3 op = p;
+                float scale = 1.0;
+                float d = 1e10;
+                
+                for(int i = 0; i < 8; i++) {
+                    p = abs(p) - vec3(0.25, 0.25, 1.25) * scale;
+                    pR(p.xy, time * 0.1 + float(i) * 0.2);
+                    pR(p.yz, time * 0.15 + sin(float(i) * 0.3) * 0.5);
+                    
+                    float boxDist = length(max(abs(p) - vec3(0.3, 0.7, 0.5) * scale, 0.0));
+                    d = min(d, boxDist / scale);
+                    
+                    scale *= 0.8;
+                }
+                
+                // Add arcane symbols to the surface
+                d += arcaneSymbol(op.xy, 10.0) * 0.02;
+                d += arcaneSymbol(op.yz, 8.0) * 0.02;
+                d += arcaneSymbol(op.xz, 12.0) * 0.02;
+                
+                d += fbm(op * 4.0 + time * 0.2) * 0.05;
+                
+                return d;
+            }
+
+            float rayMarch(vec3 ro, vec3 rd) {
+                float dO = 0.0;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = shape(p);
+                    dO += dS;
+                    if(abs(dS) < SURF_DIST || dO > MAX_DIST) break;
+                }
+                return dO;
+            }
+
+            vec3 calcNormal(vec3 p) {
+                const vec2 e = vec2(0.001, 0);
+                return normalize(vec3(
+                    shape(p + e.xyy) - shape(p - e.xyy),
+                    shape(p + e.yxy) - shape(p - e.yxy),
+                    shape(p + e.yyx) - shape(p - e.yyx)
+                ));
+            }
+
+            vec3 ninthGatePalette(float t) {
+                vec3 a = vec3(0.5, 0.3, 0.2);
+                vec3 b = vec3(0.4, 0.3, 0.2);
+                vec3 c = vec3(1.0, 0.8, 0.6);
+                vec3 d = vec3(0.2, 0.1, 0.0);
+                return a + b*cos(2.0*PI*(c*t+d));
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+                
+                float camDist = 3.0 + sin(time * 0.1) * 0.5;
+                vec3 ro = vec3(camDist * sin(time * 0.2), 1.5 * sin(time * 0.1), camDist * cos(time * 0.2));
+                vec3 lookAt = vec3(0.0, 0.0, 0.0);
+                vec3 f = normalize(lookAt - ro);
+                vec3 r = normalize(cross(vec3(0, 1, 0), f));
+                vec3 u = cross(f, r);
+                vec3 rd = normalize(uv.x * r + uv.y * u + 1.5 * f);
+                
+                float d = rayMarch(ro, rd);
+                
+                vec3 col = vec3(0.05, 0.03, 0.02);  // Warm dark background
+                
+                if (d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = calcNormal(p);
+                    
+                    vec3 lightPos = vec3(2.0 * sin(time), 4.0, 2.0 * cos(time));
+                    vec3 lightDir = normalize(lightPos - p);
+                    float diff = max(dot(n, lightDir), 0.0);
+                    
+                    float t = fbm(p * 0.1 + time * 0.05);
+                    vec3 baseColor = ninthGatePalette(t);
+                    
+                    col = baseColor * (diff * 0.7 + 0.3);
+                    
+                    float fresnel = pow(1.0 - max(dot(n, -rd), 0.0), 5.0);
+                    col += vec3(0.6, 0.4, 0.2) * fresnel;  // Golden fresnel
+                    
+                    float ao = 1.0 - (length(p) - 1.0) * 0.5;
+                    col *= ao;
+                    
+                    // Parchment-like texture
+                    col *= 0.8 + 0.2 * noise(p * 50.0);
+                    
+                    // Reduced fog effect with warm tint
+                    col = mix(col, vec3(0.1, 0.05, 0.03), 1.0 - exp(-0.02 * d * d));
+                } else {
+                    // Subtle background texture reminiscent of old paper
+                    col += 0.03 * fbm(rd * 5.0 + time * 0.1);
+                }
+                
+                // Vignette effect
+                col *= 1.0 - 0.3 * length(uv);
+                
+                // Flickering candle-like effect
+                col *= 1.0 + 0.05 * noise(vec3(time * 2.0));
+                
+                // Contrast and gamma adjustment
+                col = pow(col, vec3(0.8));
+                col = (col - 0.5) * 1.2 + 0.5;
+                col = pow(col, vec3(0.6));  // Slightly raised gamma for a more aged look
+                
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+    </script>
+</body>
+</html>

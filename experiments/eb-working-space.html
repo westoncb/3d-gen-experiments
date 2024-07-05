@@ -34,7 +34,6 @@
             #define MAX_STEPS 100
             #define MAX_DIST 100.0
             #define SURF_DIST 0.001
-            #define PI 3.141592
 
             mat2 rot2D(float angle) {
                 float s = sin(angle), c = cos(angle);
@@ -50,17 +49,26 @@
                 return length(p) - r;
             }
 
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
             vec2 foldRotate(vec2 p, float s) {
-                float a = PI / s - atan(p.x, p.y);
-                float n = PI / s * floor((s * a + PI) / (2.0 * PI));
+                float a = 3.141592 / s - atan(p.x, p.y);
+                float n = 3.141592 / s * floor((s * a + 3.141592) / (2.0 * 3.141592));
                 p = rot2D(n * 2.0) * p;
                 return p;
             }
 
             float escherPattern(vec3 p) {
-                p.xz = foldRotate(p.xz, 7.0);
-                float box = sdBox(p, vec3(1.0, 0.1, 1.0));
-                return mod(box, p.x);
+                for (int i = 0; i < 4; i++) {
+                    p = abs(p) - vec3(0.25);
+                    p.xy = foldRotate(p.xy, 7.0);
+                    p.yz = foldRotate(p.yz, 7.0);
+                    p.zx = foldRotate(p.zx, 7.0);
+                }
+                return sdBox(p, vec3(1.0 / 28.0));
             }
 
             float blakePattern(vec3 p) {
@@ -69,15 +77,17 @@
                 q.xy *= rot2D(t);
                 q.yz *= rot2D(t * 0.7);
                 float sphere = sdSphere(q, 1.0);
-                float twist = sin(q.x*5.0 + t) * sin(q.y*5.0 + t) * sin(q.z*5.0 + t) * 0.1;
-                return sphere * twist;
+                float twist = sin(q.x*5.0 + t) * sin(q.y*5.0 + t) * sin(q.z*5.0 + t) * 0.3;
+                float waves = sin(length(q) * 4.0 - t * 2.0) * 0.2;
+                return sphere * (waves + twist);
             }
 
             float sceneSDF(vec3 p) {
                 float escher = escherPattern(p);
-                float blake = blakePattern(p);
                 // return escher;
-                return mix(escher, blake, smoothstep(0.0, 1.0, transition));
+                float blake = blakePattern(p);
+                float t = sin(transition * 3.14159) * 0.5 + 0.5; // Non-linear transition
+                return mix(escher, blake, t);
             }
 
             vec3 getNormal(vec3 p) {

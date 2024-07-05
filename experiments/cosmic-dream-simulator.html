@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Dread Simulator</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; cursor: none; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #800080;
+            font-family: "Courier New", monospace;
+            pointer-events: none;
+        }
+        #eldritchText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: "Courier New", monospace;
+            font-size: 24px;
+            color: #800080;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Cosmic Dread Simulator<br>Click to tear reality</div>
+    <div id="eldritchText"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    <script>
+        let scene, camera, renderer, composer;
+        let objects = [];
+        let clock = new THREE.Clock();
+        let uniforms;
+        let audioContext, oscillator, gainNode;
+        let mouse = new THREE.Vector2();
+        let raycaster = new THREE.Raycaster();
+
+        const eldritchPhrases = [
+            "Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn",
+            "Iä! Iä! Cthulhu fhtagn!",
+            "That is not dead which can eternal lie",
+            "The Old Ones were, the Old Ones are, and the Old Ones shall be",
+            "In his house at R'lyeh, dead Cthulhu waits dreaming"
+        ];
+
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            camera.position.z = 5;
+
+            scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+            uniforms = {
+                time: { value: 1.0 },
+                resolution: { value: new THREE.Vector2() },
+                mouse: { value: new THREE.Vector2() }
+            };
+
+            initAudio();
+        }
+
+        function createNonEuclideanObject() {
+            const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        vec3 p = position;
+                        float noise = sin(10.0 * p.x + time) * cos(10.0 * p.y + time) * sin(10.0 * p.z + time);
+                        p += normal * noise * 0.2;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform vec2 mouse;
+                    varying vec2 vUv;
+                    void main() {
+                        vec2 p = -1.0 + 2.0 * vUv;
+                        float r = sqrt(dot(p,p));
+                        float a = atan(p.y, p.x) + 0.5 * sin(r * 10.0 - time);
+                        vec3 color = 0.5 + 0.5 * cos(time + vec3(a,a,a) + vec3(0,2,4));
+                        float distToMouse = length(mouse - vUv);
+                        color *= smoothstep(0.0, 0.2, distToMouse);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                wireframe: true
+            });
+
+            const object = new THREE.Mesh(geometry, material);
+            scene.add(object);
+            objects.push(object);
+        }
+
+        function createDimensionalRift() {
+            const geometry = new THREE.SphereGeometry(2, 32, 32);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec3 vNormal;
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        vNormal = normal;
+                        vec3 p = position;
+                        float noise = sin(5.0 * p.x + time) * cos(5.0 * p.y + time) * sin(5.0 * p.z + time);
+                        p += normal * noise * 0.3;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform vec2 mouse;
+                    varying vec3 vNormal;
+                    varying vec2 vUv;
+                    void main() {
+                        vec3 color = 0.5 + 0.5 * cos(time * 0.5 + vNormal + vec3(0,2,4));
+                        float distToMouse = length(mouse - vUv);
+                        float ripple = sin(distToMouse * 50.0 - time * 5.0) * 0.5 + 0.5;
+                        color *= ripple;
+                        gl_FragColor = vec4(color, 0.7);
+                    }
+                `,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+
+            const rift = new THREE.Mesh(geometry, material);
+            scene.add(rift);
+            objects.push(rift);
+        }
+
+        function createTentacles() {
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-2, 0, 0),
+                new THREE.Vector3(-1, 1, 1),
+                new THREE.Vector3(0, 0, 2),
+                new THREE.Vector3(1, -1, 1),
+                new THREE.Vector3(2, 0, 0)
+            ]);
+
+            const geometry = new THREE.TubeGeometry(curve, 100, 0.1, 8, false);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        vec3 p = position;
+                        float wave = sin(20.0 * vUv.x - time * 2.0) * 0.1;
+                        p += normal * wave;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vec3 color = vec3(0.5, 0.0, 0.5);
+                        float pattern = sin(vUv.x * 50.0 - time * 2.0) * 0.5 + 0.5;
+                        color *= pattern;
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            for (let i = 0; i < 10; i++) {
+                const tentacle = new THREE.Mesh(geometry, material);
+                tentacle.position.set(
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2
+                );
+                tentacle.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                scene.add(tentacle);
+                objects.push(tentacle);
+            }
+        }
+
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            oscillator = audioContext.createOscillator();
+            gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(50, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            oscillator.start();
+        }
+
+        function updateAudio() {
+            const time = clock.getElapsedTime();
+            const frequency = 50 + Math.sin(time) * 20;
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            uniforms.time.value = clock.getElapsedTime();
+            uniforms.mouse.value = mouse;
+
+            objects.forEach((obj, index) => {
+                obj.rotation.x = Math.sin(uniforms.time.value * 0.5 + index) * 0.5;
+                obj.rotation.y = Math.cos(uniforms.time.value * 0.3 + index) * 0.5;
+                obj.rotation.z = Math.sin(uniforms.time.value * 0.7 + index) * 0.5;
+            });
+
+            camera.position.x = Math.sin(uniforms.time.value * 0.1) * 3;
+            camera.position.y = Math.cos(uniforms.time.value * 0.1) * 3;
+            camera.lookAt(scene.position);
+
+            updateAudio();
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.resolution.value.x = renderer.domElement.width;
+            uniforms.resolution.value.y = renderer.domElement.height;
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function onClick() {
+            const eldritchText = document.getElementById('eldritchText');
+            eldritchText.textContent = eldritchPhrases[Math.floor(Math.random() * eldritchPhrases.length)];
+            eldritchText.style.opacity = 1;
+            setTimeout(() => {
+                eldritchText.style.opacity = 0;
+            }, 2000);
+
+            // Create a new dimensional rift at the click position
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children);
+            if (intersects.length > 0) {
+                const rift = createDimensionalRift();
+                rift.position.copy(intersects[0].point);
+            }
+        }
+
+        function init() {
+            initScene();
+            createNonEuclideanObject();
+            createDimensionalRift();
+            createTentacles();
+            animate();
+
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('mousemove', onMouseMove, false);
+            window.addEventListener('click', onClick, false);
+        }
+
+        init();
+    </script>
+</body>
+</html>

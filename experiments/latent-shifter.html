@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Escher to Blake Transition</title>
+    <title>Latent Space Visualization</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -12,8 +12,11 @@
 </head>
 <body>
     <div id="controls">
-        <label for="transitionSlider">Escher to Blake:</label>
-        <input type="range" id="transitionSlider" min="0" max="1" step="0.01" value="0">
+        <label for="dimensionSlider">Latent Dimension:</label>
+        <input type="range" id="dimensionSlider" min="1" max="10" step="0.01" value="2">
+        <br>
+        <label for="complexitySlider">Complexity:</label>
+        <input type="range" id="complexitySlider" min="0" max="1" step="0.01" value="0.5">
     </div>
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
@@ -29,64 +32,62 @@
         const fragmentShader = `
             uniform float time;
             uniform vec2 resolution;
-            uniform float transition;
+            uniform float latentDimension;
+            uniform float complexity;
 
             #define MAX_STEPS 100
             #define MAX_DIST 100.0
-            #define SURF_DIST 0.001
-            #define PI 3.141592
+            #define SURF_DIST 0.01
 
             mat2 rot2D(float angle) {
                 float s = sin(angle), c = cos(angle);
                 return mat2(c, -s, s, c);
             }
 
-            float sdBox(vec3 p, vec3 b) {
-                vec3 q = abs(p) - b;
-                return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-            }
-
             float sdSphere(vec3 p, float r) {
                 return length(p) - r;
             }
 
-            vec2 foldRotate(vec2 p, float s) {
-                float a = PI / s - atan(p.x, p.y);
-                float n = PI / s * floor((s * a + PI) / (2.0 * PI));
-                p = rot2D(n * 2.0) * p;
+            vec3 foldRotate(vec3 p, float s) {
+                float a = 3.141592 / s;
+                p.xy *= rot2D(a * floor((atan(p.y, p.x) + 3.141592) / a));
+                p.yz *= rot2D(a * floor((atan(p.z, p.y) + 3.141592) / a));
+                p.zx *= rot2D(a * floor((atan(p.x, p.z) + 3.141592) / a));
                 return p;
             }
 
-            float escherPattern(vec3 p) {
-                p.xz = foldRotate(p.xz, 7.0);
-                float box = sdBox(p, vec3(1.0, 0.1, 1.0));
-                return mod(box, p.x);
+            float latentStructure(vec3 p) {
+                float d = 1e10;
+                for (float i = 0.0; i < 5.0; i++) {
+                    p = foldRotate(p, latentDimension);
+                    p = abs(p) - vec3(1.0 + sin(time * 0.1) * 0.2);
+                    float s = sdSphere(p, 0.5 + sin(time * 0.2 + i) * 0.1);
+                    d = min(d, s);
+                }
+                return d;
             }
 
-            float blakePattern(vec3 p) {
-                float t = time * 0.2;
-                vec3 q = p;
-                q.xy *= rot2D(t);
-                q.yz *= rot2D(t * 0.7);
-                float sphere = sdSphere(q, 1.0);
-                float twist = sin(q.x*5.0 + t) * sin(q.y*5.0 + t) * sin(q.z*5.0 + t) * 0.1;
-                return sphere * twist;
+            vec3 latentFlow(vec3 p) {
+                return vec3(
+                    sin(p.x * 2.0 + time) * cos(p.y * 2.0 + time) * sin(p.z * 2.0 + time),
+                    cos(p.x * 2.0 + time) * sin(p.y * 2.0 + time) * cos(p.z * 2.0 + time),
+                    sin(p.x * 2.0 + time) * cos(p.y * 2.0 + time) * cos(p.z * 2.0 + time)
+                ) * 0.5;
             }
 
             float sceneSDF(vec3 p) {
-                float escher = escherPattern(p);
-                float blake = blakePattern(p);
-                // return escher;
-                return mix(escher, blake, smoothstep(0.0, 1.0, transition));
+                vec3 q = p + latentFlow(p) * complexity;
+                float structure = latentStructure(q) / latentDimension;
+                float flow = length(latentFlow(q)) - 0.5;
+                return smoothstep(complexity, flow, structure);
             }
 
             vec3 getNormal(vec3 p) {
-                const vec2 e = vec2(.01, 0);
-                float d = sceneSDF(p);
-                return normalize(d - vec3(
-                    sceneSDF(p-e.xyy),
-                    sceneSDF(p-e.yxy),
-                    sceneSDF(p-e.yyx)
+                const vec2 e = vec2(.001, 0);
+                return normalize(vec3(
+                    sceneSDF(p + e.xyy) - sceneSDF(p - e.xyy),
+                    sceneSDF(p + e.yxy) - sceneSDF(p - e.yxy),
+                    sceneSDF(p + e.yyx) - sceneSDF(p - e.yyx)
                 ));
             }
 
@@ -99,18 +100,17 @@
                 return normalize(i);
             }
 
-            vec3 escherPalette(float t) {
-                return vec3(0.5) + 0.5*cos(6.28318*(vec3(1.0,2.0,3.0)*t + vec3(0.0,0.1,0.2)));
-            }
-
-            vec3 blakePalette(float t) {
-                return vec3(0.5) + 0.5*cos(6.28318*(vec3(1.0,1.5,2.0)*t + vec3(0.0,0.3,0.6)));
+            vec3 latentPalette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d + complexity));
             }
 
             void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 vec2 uv = (fragCoord-.5*resolution.xy)/resolution.y;
-                vec3 ro = vec3(0, 3, -3);
-                ro.xz *= rot2D(time * 0.2);
+                vec3 ro = vec3(3.0*sin(time*0.1), 2.0, 3.0*cos(time*0.1));
                 vec3 rd = getRayDir(uv, ro, vec3(0,0,0), 1.);
 
                 float d = 0.0, t = 0.0;
@@ -128,13 +128,14 @@
                     vec3 r = reflect(rd, n);
 
                     float dif = dot(n, normalize(vec3(1,2,3)))*.5+.5;
-                    vec3 escherCol = escherPalette(length(p) * 0.1 + time * 0.1);
-                    vec3 blakeCol = blakePalette(length(p) * 0.1 + time * 0.05);
-                    col = mix(escherCol, blakeCol, smoothstep(0.0, 1.0, transition));
+                    col = latentPalette(length(p) * 0.1 + time * 0.05);
                     col *= dif;
 
                     float fresnel = pow(1.0 + dot(rd, n), 4.0);
                     col += fresnel * 0.5;
+
+                    // Add some "data flow" effect
+                    col += latentFlow(p) * 0.2;
                 }
 
                 // Fog
@@ -163,7 +164,8 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                transition: { value: 0 }
+                latentDimension: { value: 2 },
+                complexity: { value: 0.5 }
             }
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -185,10 +187,15 @@
             material.uniforms.resolution.value.set(width, height);
         });
 
-        // Handle transition slider
-        const transitionSlider = document.getElementById('transitionSlider');
-        transitionSlider.addEventListener('input', (event) => {
-            material.uniforms.transition.value = parseFloat(event.target.value);
+        // Handle sliders
+        const dimensionSlider = document.getElementById('dimensionSlider');
+        dimensionSlider.addEventListener('input', (event) => {
+            material.uniforms.latentDimension.value = parseFloat(event.target.value);
+        });
+
+        const complexitySlider = document.getElementById('complexitySlider');
+        complexitySlider.addEventListener('input', (event) => {
+            material.uniforms.complexity.value = parseFloat(event.target.value);
         });
     </script>
 </body>

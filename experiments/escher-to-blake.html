@@ -34,7 +34,7 @@
             #define PI 3.14159265359
 
             float escherPattern(vec2 p) {
-                p *= 10.0; // Scale for more detail
+                p *= 20.0; // Scale for more detail
                 vec2 q = vec2(p.x * 2.0 - p.y, p.y * 2.0 + p.x);
                 return cos(q.x) * cos(q.y);
             }

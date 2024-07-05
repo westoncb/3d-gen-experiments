@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Entanglement and Parallel Universes</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="observationStrengthSlider">Observation Strength:</label>
+        <input type="range" id="observationStrengthSlider" min="0" max="1" step="0.01" value="0.5">
+        <br>
+        <label for="entanglementSlider">Entanglement:</label>
+        <input type="range" id="entanglementSlider" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float observationStrength;
+            uniform float entanglement;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // Complex number operations
+            vec2 complexMul(vec2 a, vec2 b) {
+                return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+            }
+
+            vec2 complexExp(vec2 z) {
+                return exp(z.x) * vec2(cos(z.y), sin(z.y));
+            }
+
+            // Quantum wave function
+            vec2 psi(vec3 p, float t) {
+                vec2 z = vec2(p.x, p.y);
+                vec2 i = vec2(0.0, 1.0);
+                return complexExp(complexMul(i, vec2(dot(p, p) - t, 0.0)));
+            }
+
+            // Probability density
+            float probability(vec3 p, float t) {
+                vec2 wavefunc = psi(p, t);
+                return dot(wavefunc, wavefunc);
+            }
+
+            // Quantum fluctuation
+            float quantumNoise(vec3 p) {
+                return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
+            }
+
+            // Universe SDF
+            float universeSDF(vec3 p, float t) {
+                float prob = probability(p, t);
+                float noise = quantumNoise(p);
+                float observedState = mix(noise, step(0.5, noise), observationStrength);
+                return mix(prob, observedState, observationStrength) - 0.5;
+            }
+
+            // Entanglement field
+            float entanglementField(vec3 p) {
+                return sin(p.x * 10.0) * cos(p.y * 10.0) * sin(p.z * 10.0 + time);
+            }
+
+            float sceneSDF(vec3 p) {
+                float universe1 = universeSDF(p, time);
+                float universe2 = universeSDF(p * 1.1, time * 1.2);
+                float entanglementEffect = entanglementField(p) * entanglement;
+                return mix(min(universe1, universe2), max(universe1, universe2), entanglementEffect);
+            }
+
+            vec3 getNormal(vec3 p) {
+                const vec2 e = vec2(.001, 0);
+                return normalize(vec3(
+                    sceneSDF(p + e.xyy) - sceneSDF(p - e.xyy),
+                    sceneSDF(p + e.yxy) - sceneSDF(p - e.yxy),
+                    sceneSDF(p + e.yyx) - sceneSDF(p - e.yyx)
+                ));
+            }
+
+            vec3 getRayDir(vec2 uv, vec3 p, vec3 l, float z) {
+                vec3 f = normalize(l-p),
+                     r = normalize(cross(vec3(0,1,0), f)),
+                     u = cross(f,r),
+                     c = f*z,
+                     i = c + uv.x*r + uv.y*u;
+                return normalize(i);
+            }
+
+            vec3 quantumPalette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d + observationStrength));
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord-.5*resolution.xy)/resolution.y;
+                vec3 ro = vec3(3.0*sin(time*0.1), 2.0*cos(time*0.15), 3.0*cos(time*0.1));
+                vec3 rd = getRayDir(uv, ro, vec3(0,0,0), 1.);
+
+                float d = 0.0, t = 0.0;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * d;
+                    t = sceneSDF(p);
+                    if(t < SURF_DIST || d > MAX_DIST) break;
+                    d += t;
+                }
+
+                vec3 col = vec3(0);
+                if(d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    vec3 r = reflect(rd, n);
+
+                    float dif = dot(n, normalize(vec3(1,2,3)))*.5+.5;
+                    col = quantumPalette(length(p) * 0.1 + time * 0.05);
+                    col *= dif;
+
+                    float fresnel = pow(1.0 + dot(rd, n), 4.0);
+                    col += fresnel * 0.5;
+
+                    // Add quantum fluctuation
+                    col += vec3(0.1, 0.2, 0.3) * quantumNoise(p * 10.0) * (1.0 - observationStrength);
+
+                    // Add entanglement effect
+                    float entanglementEffect = entanglementField(p);
+                    col += vec3(0.2, 0.1, 0.3) * entanglementEffect * entanglement;
+                }
+
+                // Quantum fog
+                col = mix(col, vec3(0.05, 0.05, 0.1), 1.0 - exp(-0.0025 * d * d));
+
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                observationStrength: { value: 0.5 },
+                entanglement: { value: 0.5 }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle sliders
+        const observationStrengthSlider = document.getElementById('observationStrengthSlider');
+        observationStrengthSlider.addEventListener('input', (event) => {
+            material.uniforms.observationStrength.value = parseFloat(event.target.value);
+        });
+
+        const entanglementSlider = document.getElementById('entanglementSlider');
+        entanglementSlider.addEventListener('input', (event) => {
+            material.uniforms.entanglement.value = parseFloat(event.target.value);
+        });
+    </script>
+</body>
+</html>
+
+
+<!-- This shader attempts to visualize the concept of quantum entanglement and parallel universes. Here are some key features:
+
+Quantum Wave Function: The psi function represents a simplified quantum wave function, which determines the probability of finding a particle at a given position and time.
+Multiple Universes: Two slightly different universe functions (universe1 and universe2) are combined to represent parallel realities.
+Observation Effect: The observationStrength parameter simulates the collapse of the wave function due to observation. As it increases, the quantum probabilities become more discrete.
+Entanglement: The entanglement parameter and entanglementField function create connections between the parallel universes, visualizing quantum entanglement.
+Quantum Fluctuations: Random quantum noise is added to the visualization, which becomes less prominent as observation strength increases.
+Complex Number Operations: Basic complex number math is used to calculate the quantum wave function.
+
+The shader allows you to interact with two parameters:
+
+Observation Strength: This simulates the act of observing the quantum system. As you increase it, you should see the visualization become more defined and less probabilistic.
+Entanglement: This controls the strength of connections between the parallel universes. Increasing it should make the visualization more interconnected and complex.
+
+As you adjust these parameters, you should see the visualization shift between more wave-like, probabilistic patterns (low observation, high entanglement) and more defined, particle-like structures (high observation, low entanglement).
+This shader aims to provide a visually engaging and conceptually intriguing exploration of quantum mechanics and the multiverse theory. It's a blend of scientific concepts and artistic interpretation, designed to provoke thought about the nature of reality at its most fundamental level. -->

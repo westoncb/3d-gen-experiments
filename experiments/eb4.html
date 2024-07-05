@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Escher to Blake Transition</title>
+    <title>Escher to Blake Transition V2</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -34,7 +34,6 @@
             #define MAX_STEPS 100
             #define MAX_DIST 100.0
             #define SURF_DIST 0.001
-            #define PI 3.141592
 
             mat2 rot2D(float angle) {
                 float s = sin(angle), c = cos(angle);
@@ -50,17 +49,13 @@
                 return length(p) - r;
             }
 
-            vec2 foldRotate(vec2 p, float s) {
-                float a = PI / s - atan(p.x, p.y);
-                float n = PI / s * floor((s * a + PI) / (2.0 * PI));
-                p = rot2D(n * 2.0) * p;
-                return p;
-            }
-
             float escherPattern(vec3 p) {
-                p.xz = foldRotate(p.xz, 7.0);
-                float box = sdBox(p, vec3(1.0, 0.1, 1.0));
-                return mod(box, p.x);
+                for (int i = 0; i < 5; i++) {
+                    p = abs(p) - vec3(1.0, 1.0, 1.0);
+                    p.xy *= rot2D(time * 0.2);
+                    p.yz *= rot2D(time * 0.1);
+                }
+                return sdBox(p, vec3(0.2, 0.2, 0.2));
             }
 
             float blakePattern(vec3 p) {
@@ -69,14 +64,14 @@
                 q.xy *= rot2D(t);
                 q.yz *= rot2D(t * 0.7);
                 float sphere = sdSphere(q, 1.0);
-                float twist = sin(q.x*5.0 + t) * sin(q.y*5.0 + t) * sin(q.z*5.0 + t) * 0.1;
-                return sphere * twist;
+                float twist = sin(q.x*5.0 + t) * sin(q.y*5.0 + t) * sin(q.z*5.0 + t) * 0.5;
+                float waves = sin(length(q) * 5.0 - t * 3.0) * 0.1;
+                return sphere + twist + waves;
             }
 
             float sceneSDF(vec3 p) {
                 float escher = escherPattern(p);
                 float blake = blakePattern(p);
-                // return escher;
                 return mix(escher, blake, smoothstep(0.0, 1.0, transition));
             }
 
@@ -104,13 +99,12 @@
             }
 
             vec3 blakePalette(float t) {
-                return vec3(0.5) + 0.5*cos(6.28318*(vec3(1.0,1.5,2.0)*t + vec3(0.0,0.3,0.6)));
+                return vec3(0.5) + 0.5*cos(6.28318*(vec3(1.0,1.5,2.0)*t + vec3(0.5,0.2,0.0)));
             }
 
             void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 vec2 uv = (fragCoord-.5*resolution.xy)/resolution.y;
-                vec3 ro = vec3(0, 3, -3);
-                ro.xz *= rot2D(time * 0.2);
+                vec3 ro = vec3(3.0*sin(time*0.1), 2.0, 3.0*cos(time*0.1));
                 vec3 rd = getRayDir(uv, ro, vec3(0,0,0), 1.);
 
                 float d = 0.0, t = 0.0;

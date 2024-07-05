@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Eldritch Singularity: A Lovecraftian Black Hole</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let eldritchSingularity, cosmicTentacles, maddeningVoid, unknowableGeometries;
+        let clock = new THREE.Clock();
+
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            camera.position.z = 5;
+        }
+
+        function createEldritchSingularity() {
+            const geometry = new THREE.SphereGeometry(1, 128, 128);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    schwarzschildRadius: { value: 1 },
+                    spin: { value: 0.998 },  // Near-extreme Kerr black hole
+                    charge: { value: 0.1 }
+                },
+                vertexShader: `
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+                    
+                    void main() {
+                        vPosition = position;
+                        vNormal = normal;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float schwarzschildRadius;
+                    uniform float spin;
+                    uniform float charge;
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+
+                    // Simplex noise function
+                    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+                    float snoise(vec3 v) {
+                        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+                        vec3 i  = floor(v + dot(v, C.yyy));
+                        vec3 x0 = v - i + dot(i, C.xxx);
+
+                        vec3 g = step(x0.yzx, x0.xyz);
+                        vec3 l = 1.0 - g;
+                        vec3 i1 = min( g.xyz, l.zxy );
+                        vec3 i2 = max( g.xyz, l.zxy );
+
+                        vec3 x1 = x0 - i1 + C.xxx;
+                        vec3 x2 = x0 - i2 + C.yyy;
+                        vec3 x3 = x0 - D.yyy;
+
+                        i = mod289(i);
+                        vec4 p = permute( permute( permute(
+                                    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                                + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                                + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+                        float n_ = 0.142857142857;
+                        vec3 ns = n_ * D.wyz - D.xzx;
+
+                        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+                        vec4 x_ = floor(j * ns.z);
+                        vec4 y_ = floor(j - 7.0 * x_);
+
+                        vec4 x = x_ *ns.x + ns.yyyy;
+                        vec4 y = y_ *ns.x + ns.yyyy;
+                        vec4 h = 1.0 - abs(x) - abs(y);
+
+                        vec4 b0 = vec4( x.xy, y.xy );
+                        vec4 b1 = vec4( x.zw, y.zw );
+
+                        vec4 s0 = floor(b0)*2.0 + 1.0;
+                        vec4 s1 = floor(b1)*2.0 + 1.0;
+                        vec4 sh = -step(h, vec4(0.0));
+
+                        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+                        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+
+                        vec3 p0 = vec3(a0.xy,h.x);
+                        vec3 p1 = vec3(a0.zw,h.y);
+                        vec3 p2 = vec3(a1.xy,h.z);
+                        vec3 p3 = vec3(a1.zw,h.w);
+
+                        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                        p0 *= norm.x;
+                        p1 *= norm.y;
+                        p2 *= norm.z;
+                        p3 *= norm.w;
+
+                        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                        m = m * m;
+                        return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                                    dot(p2,x2), dot(p3,x3) ) );
+                    }
+
+                    void main() {
+                        vec3 p = vPosition;
+                        float noise = snoise(p * 5.0 + time * 0.1);
+                        
+                        // Non-Euclidean distortion
+                        float distortion = sin(20.0 * p.x + 15.0 * p.y + 10.0 * p.z + time);
+                        p += vNormal * distortion * 0.1;
+
+                        // Event horizon effect
+                        float eventHorizon = smoothstep(0.9, 1.0, length(p));
+                        
+                        // Lovecraftian color palette
+                        vec3 color1 = vec3(0.1, 0.4, 0.2);  // Deep green
+                        vec3 color2 = vec3(0.3, 0.0, 0.3);  // Dark purple
+                        vec3 color3 = vec3(0.7, 0.2, 0.0);  // Blood red
+                        
+                        vec3 color = mix(color1, color2, noise);
+                        color = mix(color, color3, eventHorizon);
+                        
+                        // Pulsating glow
+                        float glow = 0.5 + 0.5 * sin(time * 2.0 + length(p) * 10.0);
+                        color += vec3(0.2, 0.1, 0.3) * glow;
+                        
+                        // Fade to black near the center
+                        color *= smoothstep(0.0, 0.5, length(p));
+
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            eldritchSingularity = new THREE.Mesh(geometry, material);
+            scene.add(eldritchSingularity);
+        }
+
+        function createCosmicTentacles() {
+            const geometry = new THREE.BufferGeometry();
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-2, 0, 0),
+                new THREE.Vector3(-1, 1, 1),
+                new THREE.Vector3(0, 0, 2),
+                new THREE.Vector3(1, -1, 1),
+                new THREE.Vector3(2, 0, 0)
+            ]);
+
+            const points = curve.getPoints(50);
+            geometry.setFromPoints(points);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 }
+                },
+                vertexShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        vPosition = position;
+                        vec3 p = position;
+                        
+                        // Writhing motion
+                        p.x += sin(2.0 * p.y + time) * 0.1;
+                        p.y += cos(2.0 * p.z + time) * 0.1;
+                        p.z += sin(2.0 * p.x + time) * 0.1;
+
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        float pattern = sin(20.0 * vPosition.x + 15.0 * vPosition.y + 10.0 * vPosition.z - 5.0 * time);
+                        vec3 color = mix(vec3(0.5, 0.0, 0.5), vec3(0.0, 0.3, 0.3), pattern);
+                        gl_FragColor = vec4(color, 0.7);
+                    }
+                `,
+                transparent: true
+            });
+
+            for (let i = 0; i < 10; i++) {
+                const tentacle = new THREE.Line(geometry, material);
+                tentacle.position.set(
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2
+                );
+                tentacle.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                scene.add(tentacle);
+            }
+        }
+
+        function createMaddeningVoid() {
+            const geometry = new THREE.SphereGeometry(20, 64, 64);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 }
+                },
+                vertexShader: `
+                    varying vec3 vPosition;
+                    void main() {
+                        vPosition = position;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+
+                    float random(vec3 scale, float seed) {
+                        return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
+                    }
+
+                    void main() {
+                        vec3 color = vec3(0.0);
+                        float noise = 0.0;
+                        vec3 size = vec3(0.2);
+                        vec2 pos = vPosition.xy;
+
+                        float a = 0.0;
+                        float b = a + 4.0;
+                        float c = b + 4.0;
+                        float d = c + 4.0;
+                        float e = d + 4.0;
+                        float f = e + 4.0;
+                        float g = f + 4.0;
+
+                        for (int i = 0; i < 7; i++) {
+                            float depth = 1.0 - float(i) * 0.14;
+                            noise = random(vec3(size * depth), time * 0.1);
+                            if (i == 0) {
+                                color.r += noise * (1.0 - step(a, noise) * step(noise, b)) * depth;
+                            }
+                            if (i == 1) {
+                                color.g += noise * (1.0 - step(b, noise) * step(noise, c)) * depth;
+                            }
+                            if (i == 2) {
+                                color.b += noise * (1.0 - step(c, noise) * step(noise, d)) * depth;
+                            }
+                            if (i == 3) {
+                                color.r += noise * (1.0 - step(d, noise) * step(noise, e)) * depth;
+                            }
+                            if (i == 4) {
+                                color.g += noise * (1.0 - step(e, noise) * step(noise, f)) * depth;
+                            }
+                            if (i == 5) {
+                                color.b += noise * (1.0 - step(f, noise) * step(noise, g)) * depth;
+                            }
+                        }
+
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                side: THREE.BackSide
+            });
+
+            maddeningVoid = new THREE.Mesh(geometry, material);
+            scene.add(maddeningVoid);
+        }
+
+        function createUnknowableGeometries() {
+            const geometry = new THREE.IcosahedronGeometry(0.5, 0);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 }
+                },
+                vertexShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        vPosition = position;
+                        vec3 p = position;
+                        
+                        // Non-Euclidean transformation
+                        float theta = sin(time * 0.1) * 3.14159;
+                        p.x = p.x * cos(theta) - p.z * sin(theta);
+                        p.z = p.x * sin(theta) + p.z * cos(theta);
+                        
+                        // Pulsating effect
+                        p += normal * (sin(time + position.x * 10.0) * 0.1);
+
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+
+                    void main() {
+                        vec3 color = 0.5 + 0.5 * cos(time + vPosition.xyx + vec3(0, 2, 4));
+                        float opacity = 0.7 + 0.3 * sin(time * 2.0 + length(vPosition) * 10.0);
+                        gl_FragColor = vec4(color, opacity);
+                    }
+                `,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+
+            for (let i = 0; i < 20; i++) {
+                const geometry = new THREE.IcosahedronGeometry(0.2 + Math.random() * 0.3, 0);
+                const unknowableGeometry = new THREE.Mesh(geometry, material);
+                unknowableGeometry.position.set(
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2,
+                    Math.random() * 4 - 2
+                );
+                scene.add(unknowableGeometry);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+
+            eldritchSingularity.material.uniforms.time.value = time;
+            maddeningVoid.material.uniforms.time.value = time;
+
+            scene.traverse((object) => {
+                if (object.isMesh && object.material.uniforms) {
+                    object.material.uniforms.time.value = time;
+                }
+            });
+
+            // Slowly rotate the camera around the scene
+            camera.position.x = Math.sin(time * 0.1) * 5;
+            camera.position.z = Math.cos(time * 0.1) * 5;
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+
+        function init() {
+            initScene();
+            createEldritchSingularity();
+            createCosmicTentacles();
+            createMaddeningVoid();
+            createUnknowableGeometries();
+            animate();
+        }
+
+        init();
+    </script>
+</body>
+</html>

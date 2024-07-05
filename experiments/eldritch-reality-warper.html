@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eldritch Reality Warper</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #800080;
+            font-family: "Courier New", monospace;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Eldritch Reality Warper<br>Gaze not too long into the abyss</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script>
+        let scene, camera, renderer, composer;
+        let objects = [];
+        let clock = new THREE.Clock();
+        let uniforms;
+
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            camera.position.z = 5;
+
+            scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+            uniforms = {
+                time: { value: 1.0 },
+                resolution: { value: new THREE.Vector2() }
+            };
+        }
+
+        function createNonEuclideanObject() {
+            const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        vec3 p = position;
+                        p.x += sin(p.y * 10.0 + time) * 0.1;
+                        p.y += cos(p.z * 8.0 + time) * 0.1;
+                        p.z += sin(p.x * 6.0 + time) * 0.1;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vec2 p = -1.0 + 2.0 * vUv;
+                        float r = sqrt(dot(p,p));
+                        float a = atan(p.y, p.x) + 0.5 * sin(r * 10.0 - time);
+                        vec3 color = 0.5 + 0.5 * cos(time + vec3(a,a,a) + vec3(0,2,4));
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                wireframe: true
+            });
+
+            const object = new THREE.Mesh(geometry, material);
+            scene.add(object);
+            objects.push(object);
+        }
+
+        function createImpossibleShape() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            const size = 1;
+
+            for (let i = 0; i < 5000; i++) {
+                const t = i / 5000;
+                const x = size * Math.cos(2 * Math.PI * t);
+                const y = size * Math.sin(2 * Math.PI * t);
+                const z = size * Math.sin(4 * Math.PI * t);
+
+                vertices.push(x, y, z);
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    void main() {
+                        vec3 p = position;
+                        p.x += sin(p.z * 10.0 + time) * 0.1;
+                        p.y += cos(p.x * 8.0 + time) * 0.1;
+                        p.z += sin(p.y * 6.0 + time) * 0.1;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                        gl_PointSize = 2.0;
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    void main() {
+                        float r = sin(time * 0.5) * 0.5 + 0.5;
+                        float g = cos(time * 0.3) * 0.5 + 0.5;
+                        float b = sin(time * 0.7) * 0.5 + 0.5;
+                        gl_FragColor = vec4(r, g, b, 1.0);
+                    }
+                `
+            });
+
+            const points = new THREE.Points(geometry, material);
+            scene.add(points);
+            objects.push(points);
+        }
+
+        function createRealityTear() {
+            const geometry = new THREE.PlaneGeometry(2, 2, 20, 20);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        vec3 p = position;
+                        float displacement = sin(10.0 * position.x + time) * sin(10.0 * position.y + time) * 0.1;
+                        p += normal * displacement;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vec2 p = -1.0 + 2.0 * vUv;
+                        float r = sqrt(dot(p,p));
+                        if (r > 0.9) discard;
+                        float a = atan(p.y, p.x);
+                        float v = sin(50.0 * r - 20.0 * a - time);
+                        gl_FragColor = vec4(v * p.x, v * p.y, v * r, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide,
+                transparent: true
+            });
+
+            const tear = new THREE.Mesh(geometry, material);
+            scene.add(tear);
+            objects.push(tear);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            uniforms.time.value = clock.getElapsedTime();
+
+            objects.forEach((obj, index) => {
+                obj.rotation.x = Math.sin(uniforms.time.value * 0.5) * 0.5;
+                obj.rotation.y = Math.cos(uniforms.time.value * 0.3) * 0.5;
+                obj.rotation.z = Math.sin(uniforms.time.value * 0.7) * 0.5;
+
+                obj.position.x = Math.sin(uniforms.time.value * 0.2 + index) * 2;
+                obj.position.y = Math.cos(uniforms.time.value * 0.1 + index) * 2;
+                obj.position.z = Math.sin(uniforms.time.value * 0.3 + index) * 2;
+            });
+
+            camera.position.x = Math.sin(uniforms.time.value * 0.1) * 3;
+            camera.position.y = Math.cos(uniforms.time.value * 0.1) * 3;
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.resolution.value.x = renderer.domElement.width;
+            uniforms.resolution.value.y = renderer.domElement.height;
+        }
+
+        function init() {
+            initScene();
+            createNonEuclideanObject();
+            createImpossibleShape();
+            createRealityTear();
+            animate();
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        init();
+    </script>
+</body>
+</html>

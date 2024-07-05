@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elegant Ruliad Visualization</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const fragmentShader = `
+            #ifdef GL_FRAGMENT_PRECISION_HIGH
+            precision highp float;
+            #else
+            precision mediump float;
+            #endif
+
+            uniform float time;
+            uniform vec2 resolution;
+
+            #define MAX_STEPS 300
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.0001
+
+            // 4D rotation
+            mat4 rot4D(float t) {
+                float c = cos(t), s = sin(t);
+                return mat4(
+                    c, -s, 0, 0,
+                    s, c, 0, 0,
+                    0, 0, c, -s,
+                    0, 0, s, c
+                );
+            }
+
+            // Smooth minimum function
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // Mandelbulb distance estimator (simplified and smoothed)
+            float mandelbulbDE(vec3 p) {
+                vec3 z = p;
+                float dr = 1.0;
+                float r = 0.0;
+                float power = 6.0 + 2.0 * sin(time * 0.1);
+                
+                for (int i = 0; i < 10; i++) {
+                    r = length(z);
+                    if (r > 2.0) break;
+                    
+                    float theta = acos(z.z / r);
+                    float phi = atan(z.y, z.x);
+                    dr = pow(r, power - 1.0) * power * dr + 1.0;
+                    
+                    float zr = pow(r, power);
+                    theta *= power;
+                    phi *= power;
+                    
+                    z = zr * vec3(sin(theta) * cos(phi), sin(phi) * sin(theta), cos(theta));
+                    z += p;
+                }
+                return 0.5 * log(r) * r / dr;
+            }
+
+            // Julia set in 4D (simplified)
+            float julia4D(vec4 p) {
+                vec4 z = p;
+                vec4 c = 0.5 * vec4(sin(time*0.1), cos(time*0.15), sin(time*0.2), cos(time*0.25));
+                for(int i = 0; i < 8; i++) {
+                    z = vec4(
+                        z.x*z.x - z.y*z.y - z.z*z.z + z.w*z.w,
+                        2.0*z.x*z.y,
+                        2.0*z.x*z.z,
+                        2.0*z.x*z.w
+                    ) + c;
+                    if(dot(z, z) > 4.0) break;
+                }
+                return 0.25 * length(z) * log(length(z));
+            }
+
+            // Infinite geometric recursion (simplified)
+            float infiniteRecursion(vec3 p) {
+                float d = length(p) - 1.0;
+                for(int i = 0; i < 5; i++) {
+                    vec3 q = fract(p * 2.0 + 0.5) - 0.5;
+                    q = (rot4D(time * 0.1) * vec4(q, 0.0)).xyz;
+                    float s = 2.0;
+                    d = smin(d, length(q) / s, 0.1);
+                    p = q;
+                }
+                return d;
+            }
+
+            // Main distance estimator for the Ruliad
+            float ruliadDE(vec3 p) {
+                vec4 p4 = vec4(p, sin(time * 0.1));
+                p4 = rot4D(time * 0.05) * p4;
+                
+                float mandelbulb = mandelbulbDE(p);
+                float julia = julia4D(p4);
+                float recursion = infiniteRecursion(p);
+
+                float d = smin(mandelbulb, julia, 0.2);
+                d = smin(d, recursion, 0.2);
+
+                // Add subtle undulation
+                d += 0.05 * sin(10.0 * p.x + 8.0 * p.y + 6.0 * p.z + time);
+
+                return d * 0.5;
+            }
+
+            // Ray marching function
+            float rayMarch(vec3 ro, vec3 rd) {
+                float dO = 0.0;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = ruliadDE(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+                return dO;
+            }
+
+            // Calculate normal
+            vec3 getNormal(vec3 p) {
+                float d = ruliadDE(p);
+                vec2 e = vec2(0.001, 0);
+                vec3 n = d - vec3(
+                    ruliadDE(p - e.xyy),
+                    ruliadDE(p - e.yxy),
+                    ruliadDE(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            // Get color based on position and normal
+            vec3 getRuliadColor(vec3 p, vec3 n) {
+                // Base color palette
+                vec3 col1 = vec3(0.1, 0.4, 0.7);  // Deep blue
+                vec3 col2 = vec3(0.7, 0.2, 0.5);  // Purple
+                vec3 col3 = vec3(0.2, 0.7, 0.6);  // Teal
+
+                // Create a smooth gradient based on position
+                vec3 col = mix(
+                    mix(col1, col2, smoothstep(-1.0, 1.0, sin(p.x + time * 0.1))),
+                    col3,
+                    smoothstep(-1.0, 1.0, sin(p.y + p.z + time * 0.15))
+                );
+
+                // Add highlights based on normal
+                col += pow(max(dot(n, normalize(vec3(1, 2, 3))), 0.0), 4.0) * vec3(1.0, 0.9, 0.8);
+
+                // Add subtle patterns
+                col += 0.05 * sin(20.0 * p.x) * sin(20.0 * p.y) * sin(20.0 * p.z);
+
+                return col;
+            }
+
+            void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
+                vec2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+                
+                // Improved camera setup for a more dynamic view
+                float camRadius = 3.0 + sin(time * 0.1);
+                float camHeight = 1.5 + cos(time * 0.12) * 0.5;
+                vec3 ro = vec3(
+                    camRadius * sin(time * 0.1),
+                    camHeight,
+                    camRadius * cos(time * 0.1)
+                );
+                vec3 lookAt = vec3(0, 0, 0);
+                vec3 forward = normalize(lookAt - ro);
+                vec3 right = normalize(cross(vec3(0,1,0), forward));
+                vec3 up = cross(forward, right);
+                vec3 rd = normalize(forward + uv.x * right + uv.y * up);
+                
+                // Ray marching
+                float d = rayMarch(ro, rd);
+                
+                vec3 col = vec3(0);
+                
+                if(d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    col = getRuliadColor(p, n);
+                    
+                    // Add subtle ambient occlusion
+                    float ao = 1.0 - 0.2 * (0.5 + 0.5 * sin(20.0 * ruliadDE(p)));
+                    col *= ao;
+                    
+                    // Add depth-based fog for a sense of scale
+                    col = mix(col, vec3(0.1, 0.2, 0.3), 1.0 - exp(-0.01 * d * d));
+                } else {
+                    // Create a subtle, elegant background
+                    float stars = pow(fract(sin(dot(rd, vec3(12.9898, 78.233, 45.5432))) * 43758.5453), 40.0);
+                    col = vec3(stars) * vec3(0.5, 0.7, 0.9);
+                    col += 0.1 * vec3(0.1, 0.2, 0.3) * (1.0 - length(uv));
+                }
+                
+                // Apply subtle vignette
+                col *= 1.0 - 0.3 * length(uv);
+                
+                // Output to screen
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+    </script>
+</body>
+</html>

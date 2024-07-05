@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lovecraftian Ruliad: Symmetry in Cosmic Horror</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const fragmentShader = `
+            #ifdef GL_FRAGMENT_PRECISION_HIGH
+            precision highp float;
+            #else
+            precision mediump float;
+            #endif
+
+            uniform float time;
+            uniform vec2 resolution;
+
+            #define MAX_STEPS 250
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // Smooth min function for organic blending
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // 3D Rotation function
+            mat3 rotMat(vec3 axis, float angle) {
+                axis = normalize(axis);
+                float s = sin(angle);
+                float c = cos(angle);
+                float oc = 1.0 - c;
+                return mat3(
+                    oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,
+                    oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,
+                    oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c
+                );
+            }
+
+            // Fractal Brownian Motion
+            float fbm(vec3 p) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                float frequency = 1.0;
+                for (int i = 0; i < 6; i++) {
+                    value += amplitude * abs(sin(dot(p, vec3(7.0, 157.0, 113.0) * frequency)));
+                    p = rotMat(vec3(0.0, 1.0, 0.0), time * 0.1) * p;
+                    amplitude *= 0.5;
+                    frequency *= 2.0;
+                }
+                return value;
+            }
+
+            // Gravitational distortion
+            vec3 gravityDistort(vec3 p) {
+                float dist = length(p);
+                float strength = 0.2 / (dist * dist + 0.1);
+                return p - normalize(p) * strength;
+            }
+
+            // Tentacle function
+            float tentacle(vec3 p, float thickness) {
+                p = rotMat(vec3(1.0, 0.0, 0.0), sin(time * 0.5 + p.y) * 0.5) * p;
+                float d = length(p.xz) - thickness * (1.0 - smoothstep(0.0, 3.0, abs(p.y)));
+                return d + 0.1 * sin(10.0 * p.y + time * 2.0);
+            }
+
+            // Main shape function
+            float ruliadShape(vec3 p) {
+                p = gravityDistort(p);
+                
+                // Symmetry
+                p = abs(p);
+                p = rotMat(vec3(1.0, 1.0, 1.0), time * 0.1) * p;
+
+                // Base sphere
+                float d = length(p) - 2.0;
+
+                // Add tentacles
+                for (int i = 0; i < 5; i++) {
+                    float angle = float(i) * 3.14159 * 0.4;
+                    vec3 tp = rotMat(vec3(0.0, 1.0, 0.0), angle) * p;
+                    d = smin(d, tentacle(tp, 0.88), 0.51);
+                }
+
+                // Add fractal noise
+                d += 0.2 * fbm(p * 3.0 + time * 0.1);
+
+                // Create cavities
+                float cavities = fbm(p * 2.0 - time * 0.05) - 0.5;
+                d = max(d, -cavities);
+
+                return d;
+            }
+
+            // Ray marching function
+            float rayMarch(vec3 ro, vec3 rd) {
+                float dO = 0.0;
+                for (int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = ruliadShape(p);
+                    dO += dS;
+                    if (dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+                return dO;
+            }
+
+            // Calculate normal
+            vec3 getNormal(vec3 p) {
+                float d = ruliadShape(p);
+                vec2 e = vec2(0.001, 0);
+                vec3 n = d - vec3(
+                    ruliadShape(p - e.xyy),
+                    ruliadShape(p - e.yxy),
+                    ruliadShape(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            // Lovecraftian color palette
+            vec3 getLovecraftianColor(vec3 p, vec3 n) {
+                vec3 col1 = vec3(0.05, 0.1, 0.15);  // Deep, dark blue
+                vec3 col2 = vec3(0.2, 0.05, 0.2);   // Dark purple
+                vec3 col3 = vec3(0.1, 0.2, 0.1);    // Dark green
+
+                float f = fbm(p * 2.0 + time * 0.1);
+                vec3 col = mix(mix(col1, col2, f), col3, sin(f * 3.14159) * 0.5 + 0.5);
+
+                // Add a pulsating glow
+                col += 0.05 * vec3(0.2, 0.1, 0.3) * (0.5 + 0.5 * sin(length(p) * 5.0 - time * 2.0));
+
+                // Fresnel effect for ethereal look
+                float fresnel = pow(1.0 - max(dot(n, normalize(-p)), 0.0), 5.0);
+                col += fresnel * vec3(0.1, 0.2, 0.3);
+
+                return col;
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+                
+                // Camera setup
+                float camDist = 5.0 + sin(time * 0.1);
+                vec3 ro = vec3(camDist * sin(time * 0.2), 2.0 + sin(time * 0.15), camDist * cos(time * 0.2));
+                vec3 lookAt = vec3(0.0, 0.0, 0.0);
+                vec3 forward = normalize(lookAt - ro);
+                vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+                vec3 up = cross(forward, right);
+                vec3 rd = normalize(forward + uv.x * right + uv.y * up);
+                
+                // Ray marching
+                float d = rayMarch(ro, rd);
+                
+                vec3 col = vec3(0.0);
+                
+                if (d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    col = getLovecraftianColor(p, n);
+                    
+                    // Add depth-based fog
+                    col = mix(col, vec3(0.01, 0.02, 0.03), 1.0 - exp(-0.02 * d * d));
+                } else {
+                    // Starfield background
+                    float stars = pow(fract(sin(dot(rd, vec3(12.9898, 78.233, 45.5432))) * 43758.5453), 200.0);
+                    col = vec3(stars) * vec3(0.4, 0.6, 0.8);
+                }
+                
+                // Vignette effect
+                col *= 1.0 - 0.5 * length(uv);
+                
+                // Output to screen
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+    </script>
+</body>
+</html>

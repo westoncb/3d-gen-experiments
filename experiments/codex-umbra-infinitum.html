@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Codex of Infinite Shadows</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { position: absolute; top: 0; left: 0; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Parchment texture
+        function createParchmentTexture() {
+            const imageData = ctx.createImageData(canvas.width, canvas.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const value = 200 + Math.random() * 55;
+                data[i] = value;     // R
+                data[i + 1] = value - 20 + Math.random() * 20;  // G
+                data[i + 2] = value - 40 + Math.random() * 20;  // B
+                data[i + 3] = 255;   // A
+            }
+            return imageData;
+        }
+
+        const parchmentTexture = createParchmentTexture();
+
+        // Symbols and text content
+        const symbols = '∮∯∰∱∲∳⨋⨌⨍⨎⨏⨐⨑⨒⨓⨔⨕⨖⨗⨘⨙⨚⨛⨜∫∬∭∯∰∱∲∳';
+        const latinPhrases = [
+            'Ex nihilo nihil fit',
+            'Ad astra per aspera',
+            'Obscurum per obscurius',
+            'In tenebris lux',
+            'Ordo ab chao',
+            'Mundus vult decipi'
+        ];
+
+        function drawCodexPage(time) {
+            // Draw parchment background
+            ctx.putImageData(parchmentTexture, 0, 0);
+
+            // Add some aging effect
+            ctx.fillStyle = 'rgba(100, 70, 30, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw border
+            ctx.strokeStyle = 'rgba(50, 30, 10, 0.7)';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+
+            // Draw text content
+            ctx.fillStyle = 'rgba(30, 10, 0, 0.8)';
+            ctx.textAlign = 'center';
+
+            // Title
+            ctx.font = 'bold 40px serif';
+            ctx.fillText('Codex Umbra Infinitum', canvas.width / 2, 80);
+
+            // Symbol circle
+            const circleRadius = Math.min(canvas.width, canvas.height) * 0.3;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            for (let i = 0; i < symbols.length; i++) {
+                const angle = (i / symbols.length) * Math.PI * 2 + time * 0.0001;
+                const x = centerX + Math.cos(angle) * circleRadius;
+                const y = centerY + Math.sin(angle) * circleRadius;
+                ctx.font = '20px serif';
+                ctx.fillText(symbols[i], x, y);
+            }
+
+            // Central symbol
+            ctx.font = 'bold 80px serif';
+            ctx.fillText('☉', centerX, centerY);
+
+            // Latin phrases
+            ctx.font = 'italic 18px serif';
+            for (let i = 0; i < latinPhrases.length; i++) {
+                const y = canvas.height - 100 + i * 30;
+                ctx.fillText(latinPhrases[i], canvas.width / 2, y);
+            }
+
+            // Flickering effect
+            const flickerIntensity = Math.sin(time * 0.01) * 0.05 + 0.95;
+            ctx.fillStyle = `rgba(0, 0, 0, ${1 - flickerIntensity})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            drawCodexPage(time);
+        }
+
+        animate(0);
+    </script>
+</body>
+</html>

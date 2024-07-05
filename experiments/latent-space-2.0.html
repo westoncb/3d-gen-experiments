@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Latent Space Visualization</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="dimensionSlider">Latent Dimension:</label>
+        <input type="range" id="dimensionSlider" min="1" max="100" step="0.01" value="5">
+        <br>
+        <label for="complexitySlider">Complexity:</label>
+        <input type="range" id="complexitySlider" min="0" max="100" step="0.01" value="0.5">
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float latentDimension;
+            uniform float complexity;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // Random function
+            float random(vec3 p) {
+                return fract(sin(dot(p, vec3(12.9898, 78.233, 45.5432))) * 43758.5453);
+            }
+
+            // Smooth minimum function
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // Latent space SDF
+            float latentSDF(vec3 p) {
+                float d = length(p) - 1.0; // Base sphere
+
+                // Add complexity based on latent dimensions
+                for (int i = 0; i < 10; i++) {
+                    if (float(i) >= latentDimension) break;
+                    vec3 offset = vec3(sin(time * 0.5 + float(i)), cos(time * 0.3 + float(i)), sin(time * 0.7 + float(i)));
+                    float feature = length(p + offset) - 0.2;
+                    d = smin(d, feature, 0.3);
+                }
+
+                // Add noise-based deformations
+                float noise = sin(p.x*5.0)*sin(p.y*5.0)*sin(p.z*5.0) * complexity;
+                d += noise * 0.1;
+
+                return d;
+            }
+
+            // Normal calculation
+            vec3 calcNormal(vec3 p) {
+                const vec2 e = vec2(0.001, 0);
+                return normalize(vec3(
+                    latentSDF(p + e.xyy) - latentSDF(p - e.xyy),
+                    latentSDF(p + e.yxy) - latentSDF(p - e.yxy),
+                    latentSDF(p + e.yyx) - latentSDF(p - e.yyx)
+                ));
+            }
+
+            // Ray marching
+            float rayMarch(vec3 ro, vec3 rd) {
+                float dO = 0.0;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = latentSDF(p);
+                    dO += dS;
+                    if(dS < SURF_DIST || dO > MAX_DIST) break;
+                }
+                return dO;
+            }
+
+            // Main function
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+                vec3 ro = vec3(0, 0, -3);
+                vec3 rd = normalize(vec3(uv, 1));
+
+                float d = rayMarch(ro, rd);
+                vec3 p = ro + rd * d;
+
+                vec3 col = vec3(0);
+
+                if(d < MAX_DIST) {
+                    vec3 n = calcNormal(p);
+                    vec3 lightDir = normalize(vec3(1, 1, -1));
+                    float diff = dot(n, lightDir) * 0.5 + 0.5;
+                    col = vec3(diff);
+
+                    // Add color based on latent features
+                    for (int i = 0; i < 10; i++) {
+                        if (float(i) >= latentDimension) break;
+                        vec3 featureCol = 0.5 + 0.5 * cos(6.28318 * (vec3(0.2, 0.4, 0.6) * float(i) / latentDimension + vec3(0, 0.33, 0.67)));
+                        col += featureCol * 0.1 * smoothstep(0.1, 0.0, length(p - vec3(sin(time * 0.5 + float(i)), cos(time * 0.3 + float(i)), sin(time * 0.7 + float(i)))));
+                    }
+
+                    // Add glow effect
+                    col += vec3(0.1, 0.2, 0.3) * (1.0 - exp(-0.02 * d));
+                }
+
+                // Fog
+                col = mix(col, vec3(0.05, 0.05, 0.1), 1.0 - exp(-0.02 * d));
+
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                latentDimension: { value: 5 },
+                complexity: { value: 0.5 }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle sliders
+        const dimensionSlider = document.getElementById('dimensionSlider');
+        dimensionSlider.addEventListener('input', (event) => {
+            material.uniforms.latentDimension.value = parseFloat(event.target.value);
+        });
+
+        const complexitySlider = document.getElementById('complexitySlider');
+        complexitySlider.addEventListener('input', (event) => {
+            material.uniforms.complexity.value = parseFloat(event.target.value);
+        });
+    </script>
+</body>
+</html>
+
+
+<!-- This shader attempts to visualize latent space through several key concepts:
+
+Dimensionality: The latentDimension uniform allows you to adjust the "number of dimensions" in the latent space, visually represented by overlapping features.
+Complexity: The complexity uniform adds noise-based deformations, representing the intricacy of the latent space.
+Feature Representation: Each "dimension" is represented by a spherical feature that moves and interacts with the base shape.
+Smooth Interpolation: The smin function is used to smoothly blend features, representing the continuous nature of latent space.
+Color Encoding: Different features are assigned different colors, suggesting how different aspects of the latent space might encode different information.
+Dynamic Movement: The features move over time, suggesting the dynamic nature of traversing through latent space.
+
+The visual result should be a complex, organic form that shifts and changes based on the latent dimension and complexity parameters. The form should suggest hidden structure and the ability to smoothly transition between different states.
+This visualization is, of course, an artistic interpretation rather than a literal representation of latent space. It aims to capture the essence of concepts like high-dimensionality, feature encoding, and smooth interpolation that are key to understanding latent spaces in machine learning. -->

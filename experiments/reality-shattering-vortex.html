@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reality-Shattering Vortex of Cosmic Insanity</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; cursor: none; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #800080;
+            font-family: "Courier New", monospace;
+            pointer-events: none;
+        }
+        #eldritchText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: "Courier New", monospace;
+            font-size: 24px;
+            color: #800080;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+        #vortex {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Reality-Shattering Vortex<br>Interact to unravel existence</div>
+    <div id="eldritchText"></div>
+    <canvas id="vortex"></canvas>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    <script>
+        let scene, camera, renderer, composer;
+        let clock = new THREE.Clock();
+        let uniforms;
+        let audioContext, oscillator, gainNode, analyser;
+        let mouse = new THREE.Vector2();
+        let raycaster = new THREE.Raycaster();
+        let vortexCanvas, vortexCtx;
+
+        const eldritchPhrases = [
+            "The geometry of R'lyeh is all wrong",
+            "Time is merely a construct of human insanity",
+            "In the cosmic void, madness is the only truth",
+            "Reality unravels at the edges of perception",
+            "The Old Ones whisper in colors beyond human comprehension"
+        ];
+
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            camera.position.z = 5;
+
+            uniforms = {
+                time: { value: 1.0 },
+                resolution: { value: new THREE.Vector2() },
+                mouse: { value: new THREE.Vector2() },
+                audioFrequency: { value: 0 }
+            };
+
+            initAudio();
+            initVortex();
+        }
+
+        function createHyperbolicObject() {
+            const geometry = new THREE.ParametricBufferGeometry((u, v, dest) => {
+                const theta = u * Math.PI * 2;
+                const phi = v * Math.PI * 2;
+                const r = 1 / (Math.cos(Math.sqrt(u*u + v*v)) + 1.5);
+                const x = r * Math.sin(phi) * Math.cos(theta);
+                const y = r * Math.sin(phi) * Math.sin(theta);
+                const z = r * Math.cos(phi);
+                dest.set(x, y, z);
+            }, 100, 100);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+                    void main() {
+                        vPosition = position;
+                        vNormal = normal;
+                        vec3 p = position;
+                        float noise = sin(10.0 * p.x + time) * cos(10.0 * p.y + time) * sin(10.0 * p.z + time);
+                        p += normal * noise * 0.2;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform vec2 mouse;
+                    uniform float audioFrequency;
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+                    void main() {
+                        vec3 color = 0.5 + 0.5 * cos(time + vPosition.xyx + vec3(0,2,4));
+                        float distToMouse = length(mouse - gl_FragCoord.xy / vec2(${window.innerWidth}.0, ${window.innerHeight}.0));
+                        float ripple = sin(distToMouse * 50.0 - time * 5.0 + audioFrequency) * 0.5 + 0.5;
+                        color *= ripple;
+                        color += vec3(vNormal.x, vNormal.y, vNormal.z) * 0.3;
+                        gl_FragColor = vec4(color, 0.7);
+                    }
+                `,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+
+            const object = new THREE.Mesh(geometry, material);
+            scene.add(object);
+        }
+
+        function createFractalNoise() {
+            const geometry = new THREE.PlaneGeometry(10, 10, 100, 100);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    varying float noise;
+                    
+                    float random(vec2 st) {
+                        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+                    }
+                    
+                    float noise2D(vec2 p) {
+                        vec2 ip = floor(p);
+                        vec2 u = fract(p);
+                        u = u*u*(3.0-2.0*u);
+                        float res = mix(
+                            mix(random(ip), random(ip+vec2(1.0,0.0)), u.x),
+                            mix(random(ip+vec2(0.0,1.0)), random(ip+vec2(1.0,1.0)), u.x), u.y);
+                        return res*res;
+                    }
+                    
+                    float fbm(vec2 x) {
+                        float v = 0.0;
+                        float a = 0.5;
+                        vec2 shift = vec2(100);
+                        mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+                        for (int i = 0; i < 5; ++i) {
+                            v += a * noise2D(x);
+                            x = rot * x * 2.0 + shift;
+                            a *= 0.5;
+                        }
+                        return v;
+                    }
+                    
+                    void main() {
+                        vUv = uv;
+                        vec2 p = vUv * 8.0;
+                        float noise = fbm(p + time * 0.1);
+                        vec3 pos = position + normal * noise * 2.0;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float audioFrequency;
+                    varying vec2 vUv;
+                    
+                    void main() {
+                        vec2 p = vUv * 8.0;
+                        vec3 color = vec3(0.5 + 0.5 * sin(p.xyx + time + vec3(0,2,4)));
+                        color *= audioFrequency * 0.01;
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide
+            });
+
+            const fractalPlane = new THREE.Mesh(geometry, material);
+            fractalPlane.rotation.x = -Math.PI / 2;
+            scene.add(fractalPlane);
+        }
+
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            oscillator = audioContext.createOscillator();
+            gainNode = audioContext.createGain();
+            analyser = audioContext.createAnalyser();
+            oscillator.connect(gainNode);
+            gainNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(50, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            oscillator.start();
+        }
+
+        function updateAudio() {
+            const time = clock.getElapsedTime();
+            const frequency = 50 + Math.sin(time) * 20 + mouse.x * 100;
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+            uniforms.audioFrequency.value = average;
+        }
+
+        function initVortex() {
+            vortexCanvas = document.getElementById('vortex');
+            vortexCtx = vortexCanvas.getContext('2d');
+            vortexCanvas.width = window.innerWidth;
+            vortexCanvas.height = window.innerHeight;
+        }
+
+        function drawVortex() {
+            vortexCtx.clearRect(0, 0, vortexCanvas.width, vortexCanvas.height);
+            const time = clock.getElapsedTime();
+            const centerX = vortexCanvas.width / 2;
+            const centerY = vortexCanvas.height / 2;
+
+            for (let i = 0; i < 1000; i++) {
+                const angle = i * 0.1 + time;
+                const radius = i * 0.1 + Math.sin(time + i * 0.01) * 20;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                
+                vortexCtx.fillStyle = `hsl(${(i * 0.1 + time * 50) % 360}, 100%, 50%)`;
+                vortexCtx.fillRect(x, y, 2, 2);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            uniforms.time.value = clock.getElapsedTime();
+            uniforms.mouse.value = mouse;
+
+            updateAudio();
+            drawVortex();
+
+            scene.rotation.x = Math.sin(uniforms.time.value * 0.1) * 0.5;
+            scene.rotation.y = Math.cos(uniforms.time.value * 0.1) * 0.5;
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.resolution.value.x = renderer.domElement.width;
+            uniforms.resolution.value.y = renderer.domElement.height;
+            vortexCanvas.width = window.innerWidth;
+            vortexCanvas.height = window.innerHeight;
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function onClick() {
+            const eldritchText = document.getElementById('eldritchText');
+            eldritchText.textContent = eldritchPhrases[Math.floor(Math.random() * eldritchPhrases.length)];
+            eldritchText.style.opacity = 1;
+            setTimeout(() => {
+                eldritchText.style.opacity = 0;
+            }, 2000);
+
+            // Create a reality-bending shockwave
+            const shockwave = new THREE.Mesh(
+                new THREE.PlaneGeometry(20, 20),
+                new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        center: { value: new THREE.Vector2(mouse.x, mouse.y) }
+                    },
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform float time;
+                        uniform vec2 center;
+                        varying vec2 vUv;
+                        void main() {
+                            vec2 uv = vUv - 0.5;
+                            float dist = length(uv - center);
+                            float wave = sin(dist * 20.0 - time * 10.0) * 0.5 + 0.5;
+                            float alpha = smoothstep(0.0, 0.1, wave) * smoothstep(0.3, 0.2, dist);
+                            gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+                        }
+                    `,
+                    transparent: true,
+                    depthWrite: false
+                })
+            );
+            shockwave.rotation.x = -Math.PI / 2;
+            scene.add(shockwave);
+
+            // Animate the shockwave
+            const startTime = clock.getElapsedTime();
+            function animateShockwave() {
+                const elapsed = clock.getElapsedTime() - startTime;
+                shockwave.material.uniforms.time.value = elapsed;
+                if (elapsed < 2) {
+                    requestAnimationFrame(animateShockwave);
+                } else {
+                    scene.remove(shockwave);
+                }
+            }
+            animateShockwave();
+        }
+
+function init() {
+            initScene();
+            createHyperbolicObject();
+            createFractalNoise();
+            animate();
+
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('mousemove', onMouseMove, false);
+            window.addEventListener('click', onClick, false);
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function onClick() {
+            const eldritchText = document.getElementById('eldritchText');
+            eldritchText.textContent = eldritchPhrases[Math.floor(Math.random() * eldritchPhrases.length)];
+            eldritchText.style.opacity = 1;
+            setTimeout(() => {
+                eldritchText.style.opacity = 0;
+            }, 2000);
+
+            // Create a reality-bending shockwave
+            const shockwave = new THREE.Mesh(
+                new THREE.PlaneGeometry(20, 20),
+                new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        center: { value: new THREE.Vector2(mouse.x, mouse.y) }
+                    },
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform float time;
+                        uniform vec2 center;
+                        varying vec2 vUv;
+                        void main() {
+                            vec2 uv = vUv - 0.5;
+                            float dist = length(uv - center);
+                            float wave = sin(dist * 20.0 - time * 10.0) * 0.5 + 0.5;
+                            float alpha = smoothstep(0.0, 0.1, wave) * smoothstep(0.3, 0.2, dist);
+                            gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+                        }
+                    `,
+                    transparent: true,
+                    depthWrite: false
+                })
+            );
+            shockwave.rotation.x = -Math.PI / 2;
+            scene.add(shockwave);
+
+            // Animate the shockwave
+            const startTime = clock.getElapsedTime();
+            function animateShockwave() {
+                const elapsed = clock.getElapsedTime() - startTime;
+                shockwave.material.uniforms.time.value = elapsed;
+                if (elapsed < 2) {
+                    requestAnimationFrame(animateShockwave);
+                } else {
+                    scene.remove(shockwave);
+                }
+            }
+            animateShockwave();
+        }
+
+        function createVoidPortal() {
+            const geometry = new THREE.TorusGeometry(2, 0.5, 100, 100);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    ...uniforms,
+                    portalDepth: { value: 1.0 }
+                },
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    varying vec3 vPosition;
+                    void main() {
+                        vUv = uv;
+                        vPosition = position;
+                        vec3 p = position;
+                        float noise = sin(20.0 * vUv.x + time) * cos(20.0 * vUv.y + time) * 0.1;
+                        p += normal * noise;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float audioFrequency;
+                    uniform float portalDepth;
+                    varying vec2 vUv;
+                    varying vec3 vPosition;
+                    
+                    float hash(float n) { return fract(sin(n) * 1e4); }
+                    float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
+
+                    float noise(vec2 x) {
+                        vec2 i = floor(x);
+                        vec2 f = fract(x);
+                        float a = hash(i);
+                        float b = hash(i + vec2(1.0, 0.0));
+                        float c = hash(i + vec2(0.0, 1.0));
+                        float d = hash(i + vec2(1.0, 1.0));
+                        vec2 u = f * f * (3.0 - 2.0 * f);
+                        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+                    }
+
+                    float fbm(vec2 x) {
+                        float v = 0.0;
+                        float a = 0.5;
+                        vec2 shift = vec2(100);
+                        mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+                        for (int i = 0; i < 5; ++i) {
+                            v += a * noise(x);
+                            x = rot * x * 2.0 + shift;
+                            a *= 0.5;
+                        }
+                        return v;
+                    }
+
+                    void main() {
+                        vec2 uv = vUv * 2.0 - 1.0;
+                        float r = length(uv);
+                        float theta = atan(uv.y, uv.x);
+                        
+                        float portal = smoothstep(0.5, 0.4, r);
+                        vec3 color = vec3(0.0);
+                        
+                        if (portal > 0.0) {
+                            float warp = fbm(vec2(theta * 5.0, r * 10.0 - time));
+                            float depth = mix(0.0, portalDepth, portal);
+                            color = vec3(0.1, 0.3, 0.5) * (1.0 - depth) + vec3(0.7, 0.0, 0.8) * depth;
+                            color *= warp;
+                            color += vec3(1.0, 0.5, 0.0) * pow(1.0 - r, 8.0);  // Glowing edge
+                        } else {
+                            color = vec3(0.1, 0.2, 0.3);
+                        }
+                        
+                        color *= audioFrequency * 0.01 + 0.5;
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide
+            });
+
+            const portal = new THREE.Mesh(geometry, material);
+            portal.position.set(0, 0, -5);
+            scene.add(portal);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            uniforms.time.value = clock.getElapsedTime();
+            uniforms.mouse.value = mouse;
+
+            updateAudio();
+            drawVortex();
+
+            scene.rotation.x = Math.sin(uniforms.time.value * 0.1) * 0.2;
+            scene.rotation.y = Math.cos(uniforms.time.value * 0.1) * 0.2;
+
+            // Animate void portal
+            const portal = scene.children.find(child => child.geometry instanceof THREE.TorusGeometry);
+            if (portal) {
+                portal.rotation.z += 0.005;
+                portal.material.uniforms.portalDepth.value = Math.sin(uniforms.time.value * 0.5) * 0.5 + 0.5;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
