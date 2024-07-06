@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guernica-Inspired Interactive Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform vec2 mouse;
+
+            #define PI 3.14159265359
+
+            float sdCircle(vec2 p, float r) {
+                return length(p) - r;
+            }
+
+            float sdBox(vec2 p, vec2 b) {
+                vec2 d = abs(p) - b;
+                return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+            }
+
+            float sdTriangle(vec2 p, float r) {
+                const float k = sqrt(3.0);
+                p.x = abs(p.x) - r;
+                p.y = p.y + r / k;
+                if (p.x + k * p.y > 0.0) p = vec2(p.x - k * p.y, -k * p.x - p.y) / 2.0;
+                p.x -= clamp(p.x, -2.0 * r, 0.0);
+                return -length(p) * sign(p.y);
+            }
+
+            vec2 rotate2D(vec2 p, float angle) {
+                float s = sin(angle), c = cos(angle);
+                return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+            }
+
+            float opUnion(float d1, float d2, float i) { return smoothstep(d1, d2, i); }
+            float opSubtraction(float d1, float d2) { return max(-d1, d2); }
+            float opIntersection(float d1, float d2) { return max(d1, d2); }
+
+            float guernicaScene(vec2 p) {
+                float d = 1e10;
+                
+
+                float blend = sin(mouse.x * mouse.y * PI) * 0.5 + 0.5;
+
+                // Distorted face
+                vec2 facePos = rotate2D(p - vec2(0.2, 0.1), mouse.x * PI);
+                float face = sdCircle(facePos, 0.3);
+                float eye1 = sdCircle(facePos + vec2(0.1, 0.1), 0.05);
+                float eye2 = sdCircle(facePos + vec2(-0.1, 0.1), 0.05);
+                float mouth = sdBox(rotate2D(facePos + vec2(0.0, -0.1), mouse.y * PI), vec2(0.15, 0.02));
+                d = opUnion(d, opSubtraction(opUnion(eye1, eye2, blend), face), blend);
+                d = opUnion(d, mouth, blend);
+                
+                // Fragmented body parts
+                vec2 bodyPos = rotate2D(p + vec2(0.3, -0.2), time * 0.5);
+                float body = sdBox(bodyPos, vec2(0.2, 0.4));
+                float limb1 = sdBox(rotate2D(bodyPos + vec2(0.25, 0.0), mouse.x * PI * 2.0), vec2(0.1, 0.3));
+                float limb2 = sdBox(rotate2D(bodyPos + vec2(-0.25, 0.0), mouse.y * PI * 2.0), vec2(0.1, 0.3));
+                d = opUnion(d, body, blend);
+                d = opUnion(d, limb1, blend);
+                d = opUnion(d, limb2, blend);
+                
+                // Abstract shapes
+                float triangle = sdTriangle(rotate2D(p - vec2(-0.4, 0.3), time), 0.2);
+                float circle = sdCircle(p + vec2(0.4, -0.3), 0.15);
+                d = opUnion(d, triangle, blend);
+                d = opUnion(d, circle, blend);
+                
+                // Chaotic lines
+                for (int i = 0; i < 5; i++) {
+                    float angle = float(i) * PI * 0.4 + time * 0.2;
+                    vec2 linePos = rotate2D(p, angle);
+                    d = opUnion(d, abs(linePos.y + sin(linePos.x * 10.0 + time) * 0.05) - 0.002, blend);
+                }
+                
+                return d;
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord * 2.0 - resolution.xy) / resolution.y;
+                
+                float d = guernicaScene(uv);
+                
+                // Guernica-inspired grayscale palette
+                vec3 col = vec3(1.0) - vec3(d) * 2.0;
+                col = smoothstep(0.0, 0.99, col); // Increase contrast
+                
+                // Add texture reminiscent of canvas and brush strokes
+                float noise = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+                col *= 0.8 + 0.2 * noise;
+                
+                // Add some subtle color variation based on mouse position
+                col *= vec3(1.0, 1.0 + mouse.x * 0.3, 1.0 + mouse.y * 0.3);
+                
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                mouse: { value: new THREE.Vector2(0, 0) }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle mouse movement
+        window.addEventListener('mousemove', (event) => {
+            material.uniforms.mouse.value.x = event.clientX / window.innerWidth;
+            material.uniforms.mouse.value.y = 1 - event.clientY / window.innerHeight;
+        });
+    </script>
+</body>
+</html>

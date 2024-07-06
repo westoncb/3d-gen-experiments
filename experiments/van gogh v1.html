@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Van Gogh Starry Night Inspired Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform vec2 mouse;
+
+            #define PI 3.14159265359
+
+            // Noise functions by Inigo Quilez
+            vec2 hash(vec2 p) {
+                p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));
+                return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+            }
+
+            float noise(vec2 p) {
+                const float K1 = 0.366025404;
+                const float K2 = 0.211324865;
+                vec2 i = floor(p + (p.x+p.y)*K1);
+                vec2 a = p - i + (i.x+i.y)*K2;
+                vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
+                vec2 b = a - o + K2;
+                vec2 c = a - 1.0 + 2.0*K2;
+                vec3 h = max(0.5-vec3(dot(a,a), dot(b,b), dot(c,c)), 0.0);
+                vec3 n = h*h*h*h*vec3(dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+                return dot(n, vec3(70.0));
+            }
+
+            float fbm(vec2 p) {
+                float f = 0.0;
+                float w = 0.5;
+                for (int i = 0; i < 5; i++) {
+                    f += w * noise(p);
+                    p *= 2.0;
+                    w *= 0.5;
+                }
+                return f;
+            }
+
+            vec3 starryNight(vec2 uv, vec2 mouseUV) {
+                // Sky
+                vec3 col = vec3(0.1, 0.2, 0.4);
+                
+                // Swirling patterns
+                float f = fbm(uv * 3.0 + time * 0.1);
+                col += vec3(f * 0.3, f * 0.2, f * 0.1) * 0.025;
+
+                float distToMouse = length(uv - mouseUV);
+                float angle = atan(uv.y - mouseUV.y, uv.x - mouseUV.x);
+                float swirl = sin(angle * 5.0 + time * f + distToMouse*distToMouse);
+
+                col += vec3(0.2, 0.1, 0.3) * smoothstep(0.3, 0.0, distToMouse*distToMouse) * swirl * f * 0.5;
+                
+                // Stars
+                for (int i = 0; i < 50; i++) {
+                    float sparkle = sin(time * 1.0 + float(i) * 2.0) * 0.5 + 0.5;
+                    vec2 starPos = vec2(
+                        sin(float(i) * 2.0) * 0.5 + 0.5,
+                        cos(float(i) * 2.0) * 0.5 + 0.5
+                    );
+                    float star = 1.0 - smoothstep(0.0, 0.05, length(uv - starPos));
+                    col += vec3(1.0, 0.9, 0.6) * star * sparkle * 0.25;
+                }
+                
+                // Moon
+                vec2 moonPos = vec2(0.8, 0.8);
+                float moon = 1.0 - smoothstep(0.0, 0.1, length(uv - moonPos));
+                col += vec3(1.0, 0.98, 0.9) * moon;
+                
+                // Cypress tree (simplified)
+                float cypress = smoothstep(0.0, 0.1, uv.x) - smoothstep(0.1, 0.2, uv.x);
+                cypress *= smoothstep(0.0, 1.0, uv.y) + 1.0;
+                col = mix(col, vec3(0.05, 0.1, 0.05), cypress);
+                
+                // Van Gogh-like brush strokes
+                float brush = fbm(uv * 30.0 + time * 0.085) * 5.1;
+                col += 0.0025 + 0.075 * brush;
+                
+                return col;
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = fragCoord.xy / resolution.xy;
+                uv.x *= resolution.x / resolution.y;
+                
+                vec2 mouseUV = mouse * vec2(resolution.x / resolution.y, 1.0);
+
+                vec3 col = starryNight(uv, mouseUV);
+                
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Van Gogh Starry Night Inspired Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform vec2 mouse;
+
+            #define PI 3.14159265359
+
+            // Noise functions by Inigo Quilez
+            vec2 hash(vec2 p) {
+                p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));
+                return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+            }
+
+            float noise(vec2 p) {
+                const float K1 = 0.366025404;
+                const float K2 = 0.211324865;
+                vec2 i = floor(p + (p.x+p.y)*K1);
+                vec2 a = p - i + (i.x+i.y)*K2;
+                vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
+                vec2 b = a - o + K2;
+                vec2 c = a - 1.0 + 2.0*K2;
+                vec3 h = max(0.5-vec3(dot(a,a), dot(b,b), dot(c,c)), 0.0);
+                vec3 n = h*h*h*h*vec3(dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+                return dot(n, vec3(70.0));
+            }
+
+            float fbm(vec2 p) {
+                float f = 0.0;
+                float w = 0.5;
+                for (int i = 0; i < 6; i++) {
+                    f += w * noise(p);
+                    p *= 2.0;
+                    w *= 0.5;
+                }
+                return f;
+            }
+
+            vec3 starryNight(vec2 uv, vec2 mouseUV) {
+                // Sky
+                vec3 col = vec3(0.05, 0.1, 0.2);
+                
+                // Swirling patterns
+                float f = fbm(uv * 3.0 + time * 0.1);
+                float f2 = fbm(uv * 5.0 - time * 0.15);
+                col += vec3(f * 0.3, f * 0.2, f * 0.4) * 0.3;
+                col += vec3(f2 * 0.2, f2 * 0.3, f2 * 0.1) * 0.2;
+
+                float distToMouse = length(uv - mouseUV);
+                float angle = atan(uv.y - mouseUV.y, uv.x - mouseUV.x);
+                float swirl = sin(angle * 10.0 + time * 0.5 + distToMouse * 10.0);
+                swirl = pow(abs(swirl), 0.5) * sign(swirl);
+
+                col += vec3(0.2, 0.3, 0.4) * smoothstep(0.5, 0.0, distToMouse) * swirl * f * 0.5;
+                
+                // Stars
+                for (int i = 0; i < 20; i++) {
+                    float sparkle = sin(time * 2.0 + float(i) * 1.618) * 0.5 + 0.5;
+                    vec2 starPos = vec2(
+                        fract(sin(float(i) * 234.5) * 5463.3),
+                        fract(cos(float(i) * 142.7) * 4671.9)
+                    );
+                    float star = 1.0 - smoothstep(0.0, 0.05 * (noise(starPos * 50.0 + time * 0.1) * 0.5 + 0.5), length(uv - starPos));
+                    col += vec3(1.0, 0.9, 0.7) * star * sparkle * 0.5;
+                }
+                
+                // Moon
+                vec2 moonPos = vec2(0.8, 0.8);
+                float moon = 1.0 - smoothstep(0.0, 0.1, length(uv - moonPos));
+                float moonDetail = fbm((uv - moonPos) * 20.0 + time * 0.05) * 0.1;
+                col += vec3(1.0, 0.98, 0.9) * (moon + moonDetail);
+                
+                // Cypress tree
+                float cypress = smoothstep(0.05, 0.06, abs(uv.x - 0.25)) - smoothstep(0.06, 0.07, abs(uv.x - 0.25));
+                cypress *= smoothstep(-0.5, 1.2, uv.y);
+                cypress += fbm(uv * 50.0 + time * 0.1) * 0.1 * smoothstep(0.0, 0.1, abs(uv.x - 0.25));
+                col = mix(col, vec3(0.05, 0.1, 0.05), cypress);
+                
+                // Village
+                if (uv.y < 0.3) {
+                    float village = fbm(uv * 20.0 + vec2(time * 0.1, 0.0));
+                    col = mix(col, vec3(0.2, 0.15, 0.1), smoothstep(0.1, 0.0, abs(village - 0.4)) * 0.5);
+                }
+                
+                // Van Gogh-like brush strokes
+                float brush = fbm(uv * 30.0 + time * 0.05);
+                brush += fbm(uv * 50.0 - time * 0.07) * 0.5;
+                col *= 0.8 + 0.4 * brush;
+                
+                // Color adjustments
+                col = pow(col, vec3(0.8)); // Increase contrast
+                col *= vec3(1.0, 0.9, 0.7); // Warm up the colors
+                
+                return col;
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = fragCoord.xy / resolution.xy;
+                uv.x *= resolution.x / resolution.y;
+                
+                vec2 mouseUV = mouse * vec2(resolution.x / resolution.y, 1.0);
+
+                vec3 col = starryNight(uv, mouseUV);
+                
+                // Vignette effect
+                float vignette = length(uv - 0.5);
+                col *= 1.0 - vignette * 0.5;
+                
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                mouse: { value: new THREE.Vector2(0.5, 0.5) }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle mouse movement
+        window.addEventListener('mousemove', (event) => {
+            material.uniforms.mouse.value.x = event.clientX / window.innerWidth;
+            material.uniforms.mouse.value.y = 1 - event.clientY / window.innerHeight;
+        });
+    </script>
+</body>
+</html>
