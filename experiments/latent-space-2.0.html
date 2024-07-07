@@ -50,8 +50,15 @@
                 return mix(b, a, h) - k * h * (1.0 - h);
             }
 
+            // Inversion function
+            vec3 invert(vec3 p) {
+                return p / dot(p, p);
+            }
+
             // Latent space SDF
             float latentSDF(vec3 p) {
+                p = invert(p);
+                
                 float d = length(p) - 1.0; // Base sphere
 
                 // Add complexity based on latent dimensions

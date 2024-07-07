@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Dreamscape</title>
+    <title>Dialogue-Inspired Emergent Complexity Shader</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -12,11 +12,11 @@
 </head>
 <body>
     <div id="controls">
-        <label for="uncertaintySlider">Uncertainty:</label>
-        <input type="range" id="uncertaintySlider" min="0" max="1" step="0.01" value="0.5">
+        <label for="complexitySlider">Complexity:</label>
+        <input type="range" id="complexitySlider" min="0" max="1" step="0.01" value="0.5">
         <br>
-        <label for="entanglementSlider">Entanglement:</label>
-        <input type="range" id="entanglementSlider" min="0" max="1" step="0.01" value="0.5">
+        <label for="emergenceSlider">Emergence:</label>
+        <input type="range" id="emergenceSlider" min="0" max="1" step="0.01" value="0.5">
     </div>
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
@@ -32,8 +32,8 @@
         const fragmentShader = `
             uniform float time;
             uniform vec2 resolution;
-            uniform float uncertainty;
-            uniform float entanglement;
+            uniform float complexity;
+            uniform float emergence;
 
             #define MAX_STEPS 100
             #define MAX_DIST 100.0
@@ -105,53 +105,70 @@
                 return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
             }
 
-            // Quantum wave function
-            float quantumWave(vec3 p, float freq) {
-                return sin(length(p) * freq + time) * exp(-length(p) * uncertainty);
-            }
-
-            // Entanglement effect
-            vec3 entangle(vec3 p) {
-                float e = entanglement * 2.0;
-                return vec3(
-                    snoise(p.yzx * e),
-                    snoise(p.zxy * e),
-                    snoise(p.xyz * e)
-                );
-            }
-
-            vec3 invert(vec3 p) {
-                return p / dot(p, p);
-            }
-
-            // Quantum landscape SDF
-            float quantumSDF(vec3 p) {
-                p = invert(p);
-
-                p += entangle(p) * 0.005;
-                
-                float d = length(p) - 1.0; // Base shape
-                
-                // Add quantum waves
-                float waves = 0.0;
-                for(float i = 1.0; i <= 5.0; i++) {
-                    waves += quantumWave(p, i * 3.0) * (1.0 / i);
+            // Layered complexity function
+            float layeredComplexity(vec3 p) {
+                float result = 0.0;
+                float amplitude = 1.0;
+                float frequency = 1.0;
+                for (int i = 0; i < 6; i++) {
+                    result += amplitude * snoise(p * frequency + time * 0.1);
+                    amplitude *= 0.5;
+                    frequency *= 2.0;
                 }
-                
-                d += waves * 0.3;
-                
-                // Add uncertainty distortion
-                d += snoise(p * 5.0 + time * 0.2) * uncertainty * 0.2;
-                
-                return d;
+                return result;
+            }
+
+            // Rotation function
+            mat2 rotate2D(float angle) {
+                float s = sin(angle);
+                float c = cos(angle);
+                return mat2(c, -s, s, c);
+            }
+
+            // Emergent patterns function
+            float emergentPatterns(vec3 p) {
+                vec3 q = p;
+                q.xy = rotate2D(snoise(q * 0.1 + time * 0.05) * 10.0) * q.xy;
+                q.yz = rotate2D(snoise(q * 0.15 + time * 0.07) * 8.0) * q.yz;
+                q.zx = rotate2D(snoise(q * 0.2 + time * 0.06) * 6.0) * q.zx;
+                return snoise(q * 2.0) * 0.5 + 0.5;
+            }
+
+            // Main SDF function
+            float worldSDF(vec3 p) {
+                vec3 q = p;
+                q.xy = rotate2D(time * 0.2) * q.xy;
+                q.yz = rotate2D(time * 0.15) * q.yz;
+
+                float base = length(q) - 1.0; // Base sphere
+
+                float complexityLayer = layeredComplexity(q) * complexity;
+                float emergenceLayer = emergentPatterns(q) * emergence;
+
+                float result = base - mix(emergenceLayer, complexityLayer, mix(emergence, complexity, 0.5));
+
+                // Add some smaller spheres
+
+                float sphereStructure = result;
+
+                for (int i = 1; i < 3; i++) {
+                    float fi = float(i);
+                    vec3 offset = vec3(sin(fi * 1.5 + time), cos(fi * 2.3 + time * 1.1), sin(fi * 3.7 + time * 0.7));
+                    float smallSphere = length(q - offset * 1.5) - 0.1;
+                    sphereStructure = smoothstep(sphereStructure * complexity, smallSphere * emergence, mix(emergence, complexity, 0.5));
+                }
+
+                // result = mix(result, sphereStructure, 0.5);
+
+                return sphereStructure;
             }
 
             vec3 getNormal(vec3 p) {
                 const vec2 e = vec2(.001, 0);
                 return normalize(vec3(
-                    quantumSDF(p + e.xyy) - quantumSDF(p - e.xyy),
-                    quantumSDF(p + e.yxy) - quantumSDF(p - e.yxy),
-                    quantumSDF(p + e.yyx) - quantumSDF(p - e.yyx)
+                    worldSDF(p + e.xyy) - worldSDF(p - e.xyy),
+                    worldSDF(p + e.yxy) - worldSDF(p - e.yxy),
+                    worldSDF(p + e.yyx) - worldSDF(p - e.yyx)
                 ));
             }
 
@@ -164,7 +181,7 @@
                 return normalize(i);
             }
 
-            vec3 quantumPalette(float t) {
+            vec3 palette(float t) {
                 vec3 a = vec3(0.5, 0.5, 0.5);
                 vec3 b = vec3(0.5, 0.5, 0.5);
                 vec3 c = vec3(1.0, 1.0, 1.0);
@@ -174,15 +191,15 @@
 
             void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 vec2 uv = (fragCoord-.5*resolution.xy)/resolution.y;
-                vec3 ro = vec3(3.0 * cos(time * 0.1), 2.0, 3.0 * sin(time * 0.1));
+                vec3 ro = vec3(3.0 * cos(time * 0.1), 2.0 * sin(time * 0.15), 3.0 * sin(time * 0.1));
                 vec3 rd = getRayDir(uv, ro, vec3(0,0,0), 1.);
 
-                float d = 0.0, t = 0.0;
+                float d = 0.0;
                 for(int i = 0; i < MAX_STEPS; i++) {
                     vec3 p = ro + rd * d;
-                    t = quantumSDF(p);
-                    if(t < SURF_DIST || d > MAX_DIST) break;
-                    d += t;
+                    float ds = worldSDF(p);
+                    d += ds;
+                    if(ds < SURF_DIST || d > MAX_DIST) break;
                 }
 
                 vec3 col = vec3(0);
@@ -192,20 +209,22 @@
                     vec3 r = reflect(rd, n);
 
                     float dif = dot(n, normalize(vec3(1,2,3)))*.5+.5;
-                    col = quantumPalette(length(p) * 0.1 + time * 0.05);
+                    col = palette(length(p) * 0.1 + time * 0.05);
                     col *= dif;
 
-                    // Quantum glow
-                    float glow = exp(-d * 0.1) * 0.5;
-                    col += vec3(0.5, 0.7, 1.0) * glow;
+                    float fresnel = pow(1.0 + dot(rd, n), 4.0);
+                    col += fresnel * 0.5 * vec3(0.7, 0.9, 1.0); // Ethereal glow
 
-                    // Entanglement effect
-                    vec3 ent = entangle(p);
-                    col += vec3(0.5, 0.0, 0.5) * dot(ent, ent) * 0.2;
+                    // Add complexity and emergence effects to color
+                    col *= 1.0 + layeredComplexity(p) * 0.2 * complexity;
+                    col += emergentPatterns(p) * 0.2 * emergence * vec3(1.0, 0.5, 0.2);
                 }
 
-                // Uncertainty fog
-                col = mix(col, vec3(0.1, 0.2, 0.3), 1.0 - exp(-d * uncertainty * 0.1));
+                // Fog
+                col = mix(col, vec3(0.7, 0.8, 0.9), 1.0 - exp(-0.0001 * d * d));
+
+                // Vignette
+                col *= 1.0 - 0.3 * length(uv);
 
                 fragColor = vec4(col, 1.0);
             }
@@ -230,8 +249,8 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                uncertainty: { value: 0.5 },
-                entanglement: { value: 0.5 }
+                complexity: { value: 0.5 },
+                emergence: { value: 0.5 }
             }
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -254,27 +273,15 @@
         });
 
         // Handle sliders
-        const uncertaintySlider = document.getElementById('uncertaintySlider');
-        uncertaintySlider.addEventListener('input', (event) => {
-            material.uniforms.uncertainty.value = parseFloat(event.target.value);
+        const complexitySlider = document.getElementById('complexitySlider');
+        complexitySlider.addEventListener('input', (event) => {
+            material.uniforms.complexity.value = parseFloat(event.target.value);
         });
 
-        const entanglementSlider = document.getElementById('entanglementSlider');
-        entanglementSlider.addEventListener('input', (event) => {
-            material.uniforms.entanglement.value = parseFloat(event.target.value);
+        const emergenceSlider = document.getElementById('emergenceSlider');
+        emergenceSlider.addEventListener('input', (event) => {
+            material.uniforms.emergence.value = parseFloat(event.target.value);
         });
     </script>
 </body>
 </html>
-
-<!-- This new shader, titled "Quantum Dreamscape," aims to visualize the strange and probabilistic nature of quantum mechanics. Here's a breakdown of the key elements and how they relate to quantum concepts:
-
-Quantum Wave Function: The quantumWave function represents the wave-like nature of quantum particles. It combines a sine wave with an exponential decay, influenced by the uncertainty principle.
-Uncertainty: The uncertaintySlider controls how "fuzzy" or indeterminate the landscape appears, mimicking the Heisenberg uncertainty principle.
-Entanglement: The entanglementSlider affects how different parts of the landscape influence each other, representing quantum entanglement.
-Quantum Landscape: The quantumSDF function creates a dynamic landscape that combines wave-like behavior with quantum uncertainty and entanglement effects.
-Quantum Palette: The color scheme is designed to evoke a sense of the quantum realm, with shifting hues that respond to the landscape's shape and time.
-Quantum Glow: A glow effect is added to represent the probabilistic nature of quantum particles, with brighter areas suggesting higher probability of particle presence.
-
-The shader uses similar techniques to the original, such as ray marching and noise functions, but applies them to create a unique quantum-inspired visual. Users can interact with the uncertainty and entanglement parameters to explore different quantum states.
-Would you like me to explain any part of the shader in more detail or make any modifications to better capture the quantum theme? -->

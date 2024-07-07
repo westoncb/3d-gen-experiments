@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Dreamscape</title>
+    <title>Hieronymus Bosch Inspired Shader</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -12,11 +12,11 @@
 </head>
 <body>
     <div id="controls">
-        <label for="uncertaintySlider">Uncertainty:</label>
-        <input type="range" id="uncertaintySlider" min="0" max="1" step="0.01" value="0.5">
+        <label for="chaosSlider">Chaos Level:</label>
+        <input type="range" id="chaosSlider" min="0" max="1" step="0.01" value="0.5">
         <br>
-        <label for="entanglementSlider">Entanglement:</label>
-        <input type="range" id="entanglementSlider" min="0" max="1" step="0.01" value="0.5">
+        <label for="moralitySlider">Morality Contrast:</label>
+        <input type="range" id="moralitySlider" min="0" max="1" step="0.01" value="0.5">
     </div>
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
@@ -32,17 +32,15 @@
         const fragmentShader = `
             uniform float time;
             uniform vec2 resolution;
-            uniform float uncertainty;
-            uniform float entanglement;
+            uniform float chaosLevel;
+            uniform float moralityContrast;
 
             #define MAX_STEPS 100
             #define MAX_DIST 100.0
             #define SURF_DIST 0.001
 
             // Simplex noise function
-            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 permute(vec4 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
             vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
 
             float snoise(vec3 v) {
@@ -57,20 +55,20 @@
                 vec3 i1 = min(g.xyz, l.zxy);
                 vec3 i2 = max(g.xyz, l.zxy);
 
-                vec3 x1 = x0 - i1 + C.xxx;
-                vec3 x2 = x0 - i2 + C.yyy;
-                vec3 x3 = x0 - D.yyy;
+                vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+                vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+                vec3 x3 = x0 - 1. + 3.0 * C.xxx;
 
-                i = mod289(i);
+                i = mod(i, 289.0);
                 vec4 p = permute(permute(permute(
                     i.z + vec4(0.0, i1.z, i2.z, 1.0))
                     + i.y + vec4(0.0, i1.y, i2.y, 1.0))
                     + i.x + vec4(0.0, i1.x, i2.x, 1.0));
 
-                float n_ = 0.142857142857;
+                float n_ = 1.0/7.0;
                 vec3 ns = n_ * D.wyz - D.xzx;
 
-                vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                vec4 j = p - 49.0 * floor(p * ns.z *ns.z);
 
                 vec4 x_ = floor(j * ns.z);
                 vec4 y_ = floor(j - 7.0 * x_);
@@ -105,53 +103,58 @@
                 return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
             }
 
-            // Quantum wave function
-            float quantumWave(vec3 p, float freq) {
-                return sin(length(p) * freq + time) * exp(-length(p) * uncertainty);
+            // Surreal landscape function
+            float surrealLandscape(vec3 p) {
+                float landscape = snoise(p * 0.1) * 1.0;
+                landscape += snoise(p * 0.2 + vec3(0.0, 0.0, time * 0.1)) * 2.0;
+                landscape += snoise(p * 0.4 + vec3(0.0, time * 0.05, 0.0)) * 1.0;
+                return landscape;
             }
 
-            // Entanglement effect
-            vec3 entangle(vec3 p) {
-                float e = entanglement * 2.0;
-                return vec3(
-                    snoise(p.yzx * e),
-                    snoise(p.zxy * e),
-                    snoise(p.xyz * e)
-                );
+            // Creature function
+            float creature(vec3 p, float seed) {
+                vec3 q = p * 2.0 + seed * 10.0;
+                float creature = length(q) - 0.5;
+                creature += snoise(q * 4.0 + time * 0.2) * 0.1;
+                return creature;
             }
 
-            vec3 invert(vec3 p) {
-                return p / dot(p, p);
+            // Moral dichotomy function
+            float moralDichotomy(vec3 p) {
+                return snoise(p * 0.05 - time * 0.02);
             }
 
-            // Quantum landscape SDF
-            float quantumSDF(vec3 p) {
-                p = invert(p);
-
-                p += entangle(p) * 0.005;
+            // Bosch world SDF
+            float boschWorldSDF(vec3 p) {
+                float landscape = surrealLandscape(p);
                 
-                float d = length(p) - 1.0; // Base shape
-                
-                // Add quantum waves
-                float waves = 0.0;
-                for(float i = 1.0; i <= 5.0; i++) {
-                    waves += quantumWave(p, i * 3.0) * (1.0 / i);
+                // Create multiple creatures
+                float creatures = landscape;
+                for (int i = 0; i < 5; i++) {
+                    creatures = min(creatures, creature(p, float(i)));
                 }
                 
-                d += waves * 0.3;
+                float world = landscape + creatures * 0.3 * chaosLevel;
                 
-                // Add uncertainty distortion
-                d += snoise(p * 5.0 + time * 0.2) * uncertainty * 0.2;
+                // Add moral contrast
+                float morality = moralDichotomy(p);
+                world *= morality * moralityContrast * 0.5;
                 
-                return d;
+                // Add chaotic details
+                for (int i = 0; i < 5; i++) {
+                    float scale = pow(2.0, float(i));
+                    world += snoise(p * scale + time * 0.05) * pow(0.5, float(i+1)) * chaosLevel;
+                }
+                
+                return world;
             }
 
             vec3 getNormal(vec3 p) {
                 const vec2 e = vec2(.001, 0);
                 return normalize(vec3(
-                    quantumSDF(p + e.xyy) - quantumSDF(p - e.xyy),
-                    quantumSDF(p + e.yxy) - quantumSDF(p - e.yxy),
-                    quantumSDF(p + e.yyx) - quantumSDF(p - e.yyx)
+                    boschWorldSDF(p + e.xyy) - boschWorldSDF(p - e.xyy),
+                    boschWorldSDF(p + e.yxy) - boschWorldSDF(p - e.yxy),
+                    boschWorldSDF(p + e.yyx) - boschWorldSDF(p - e.yyx)
                 ));
             }
 
@@ -164,7 +167,7 @@
                 return normalize(i);
             }
 
-            vec3 quantumPalette(float t) {
+            vec3 boschPalette(float t) {
                 vec3 a = vec3(0.5, 0.5, 0.5);
                 vec3 b = vec3(0.5, 0.5, 0.5);
                 vec3 c = vec3(1.0, 1.0, 1.0);
@@ -180,7 +183,7 @@
                 float d = 0.0, t = 0.0;
                 for(int i = 0; i < MAX_STEPS; i++) {
                     vec3 p = ro + rd * d;
-                    t = quantumSDF(p);
+                    t = boschWorldSDF(p);
                     if(t < SURF_DIST || d > MAX_DIST) break;
                     d += t;
                 }
@@ -192,20 +195,25 @@
                     vec3 r = reflect(rd, n);
 
                     float dif = dot(n, normalize(vec3(1,2,3)))*.5+.5;
-                    col = quantumPalette(length(p) * 0.1 + time * 0.05);
+                    col = boschPalette(length(p) * 0.1 + time * 0.05);
                     col *= dif;
 
-                    // Quantum glow
-                    float glow = exp(-d * 0.1) * 0.5;
-                    col += vec3(0.5, 0.7, 1.0) * glow;
+                    float fresnel = pow(1.0 + dot(rd, n), 4.0);
+                    col += fresnel * 0.5 * vec3(1.0, 0.8, 0.5); // Ethereal glow
 
-                    // Entanglement effect
-                    vec3 ent = entangle(p);
-                    col += vec3(0.5, 0.0, 0.5) * dot(ent, ent) * 0.2;
+                    // Add "moral contrast" effect
+                    float morality = moralDichotomy(p);
+                    col = mix(col, vec3(1.0 - col.r, 1.0 - col.g, 1.0 - col.b), morality * moralityContrast * 0.5);
+
+                    // Add chaotic color variations
+                    col += vec3(snoise(p * 5.0 + time), snoise(p * 5.0 + time * 1.1), snoise(p * 5.0 + time * 1.2)) * 0.1 * chaosLevel;
                 }
 
-                // Uncertainty fog
-                col = mix(col, vec3(0.1, 0.2, 0.3), 1.0 - exp(-d * uncertainty * 0.1));
+                // Add atmospheric perspective
+                col = mix(col, vec3(0.7, 0.8, 0.9), 1.0 - exp(-0.0001 * d * d));
+
+                // Add vignette
+                col *= 1.0 - 0.5 * length(uv);
 
                 fragColor = vec4(col, 1.0);
             }
@@ -230,8 +238,8 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                uncertainty: { value: 0.5 },
-                entanglement: { value: 0.5 }
+                chaosLevel: { value: 0.5 },
+                moralityContrast: { value: 0.5 }
             }
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -254,27 +262,15 @@
         });
 
         // Handle sliders
-        const uncertaintySlider = document.getElementById('uncertaintySlider');
-        uncertaintySlider.addEventListener('input', (event) => {
-            material.uniforms.uncertainty.value = parseFloat(event.target.value);
+        const chaosSlider = document.getElementById('chaosSlider');
+        chaosSlider.addEventListener('input', (event) => {
+            material.uniforms.chaosLevel.value = parseFloat(event.target.value);
         });
 
-        const entanglementSlider = document.getElementById('entanglementSlider');
-        entanglementSlider.addEventListener('input', (event) => {
-            material.uniforms.entanglement.value = parseFloat(event.target.value);
+        const moralitySlider = document.getElementById('moralitySlider');
+        moralitySlider.addEventListener('input', (event) => {
+            material.uniforms.moralityContrast.value = parseFloat(event.target.value);
         });
     </script>
 </body>
 </html>
-
-<!-- This new shader, titled "Quantum Dreamscape," aims to visualize the strange and probabilistic nature of quantum mechanics. Here's a breakdown of the key elements and how they relate to quantum concepts:
-
-Quantum Wave Function: The quantumWave function represents the wave-like nature of quantum particles. It combines a sine wave with an exponential decay, influenced by the uncertainty principle.
-Uncertainty: The uncertaintySlider controls how "fuzzy" or indeterminate the landscape appears, mimicking the Heisenberg uncertainty principle.
-Entanglement: The entanglementSlider affects how different parts of the landscape influence each other, representing quantum entanglement.
-Quantum Landscape: The quantumSDF function creates a dynamic landscape that combines wave-like behavior with quantum uncertainty and entanglement effects.
-Quantum Palette: The color scheme is designed to evoke a sense of the quantum realm, with shifting hues that respond to the landscape's shape and time.
-Quantum Glow: A glow effect is added to represent the probabilistic nature of quantum particles, with brighter areas suggesting higher probability of particle presence.
-
-The shader uses similar techniques to the original, such as ray marching and noise functions, but applies them to create a unique quantum-inspired visual. Users can interact with the uncertainty and entanglement parameters to explore different quantum states.
-Would you like me to explain any part of the shader in more detail or make any modifications to better capture the quantum theme? -->
