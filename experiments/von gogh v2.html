@@ -73,7 +73,7 @@
                 float swirl = sin(angle * 10.0 + time * 0.5 + distToMouse * 10.0);
                 swirl = pow(abs(swirl), 0.5) * sign(swirl);
 
-                col += vec3(0.2, 0.3, 0.4) * smoothstep(0.5, 0.0, distToMouse) * swirl * f * 0.5;
+                // col += vec3(0.2, 0.3, 0.4) * smoothstep(0.5, 0.0, distToMouse) * swirl * f * 0.5;
                 
                 // Stars
                 for (int i = 0; i < 20; i++) {
@@ -101,7 +101,7 @@
                 // Village
                 if (uv.y < 0.3) {
                     float village = fbm(uv * 20.0 + vec2(time * 0.1, 0.0));
-                    col = mix(col, vec3(0.2, 0.15, 0.1), smoothstep(0.1, 0.0, abs(village - 0.4)) * 0.5);
+                    col = mix(col, vec3(0.2, 0.15, 0.1), smoothstep(0.0, 0.0, abs(village - 0.4)) * 0.5);
                 }
                 
                 // Van Gogh-like brush strokes
