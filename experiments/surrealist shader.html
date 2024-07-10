@@ -16,19 +16,19 @@
     <div id="controls">
         <div class="control-group">
             <label for="imaginationStrength">Imagination Strength:</label>
-            <input type="range" id="imaginationStrength" min="0" max="3" step="0.01" value="0.35">
+            <input type="range" id="imaginationStrength" min="0" max="3" step="0.01" value="2.9">
         </div>
         <div class="control-group">
             <label for="dualityBalance">Duality Balance:</label>
-            <input type="range" id="dualityBalance" min="0" max="1" step="0.005" value="0.3">
+            <input type="range" id="dualityBalance" min="0" max="1" step="0.005" value="0.61804">
         </div>
         <div class="control-group">
             <label for="symbolicComplexity">Symbolic Complexity:</label>
-            <input type="range" id="symbolicComplexity" min="0" max="10" step="0.01" value="1">
+            <input type="range" id="symbolicComplexity" min="0" max="10" step="0.1" value="0.7">
         </div>
         <div class="control-group">
             <label for="timeFlow">Time Flow:</label>
-            <input type="range" id="timeFlow" min="0.01" max="2.0" step="0.005" value="2">
+            <input type="range" id="timeFlow" min="0.01" max="4.0" step="0.005" value="2">
         </div>
     </div>
     <script type="module">
@@ -51,7 +51,7 @@
             uniform float timeFlow;
 
             #define MAX_STEPS 100
-            #define MAX_DIST 15.0
+            #define MAX_DIST 20.0
             #define SURF_DIST 0.001
             #define PI 3.14159265359
             #define SPATIAL_WARP 0.42
@@ -213,7 +213,7 @@
                   float fresnel = pow(1. + dot(rd, n), imaginationStrength);
 
                   vec3 q = mix(p, p * noise(p), symbolicComplexity / 10.);
-                  float colorNoise = length(p) * (1.0 - symbolicComplexity/17.) + noise(q * symbolicComplexity + time * timeFlow * 0.05) * (symbolicComplexity/10.);
+                  float colorNoise = length(p) * (1.0 - symbolicComplexity/10.) + noise(q * symbolicComplexity + time * timeFlow * 0.05) * (symbolicComplexity/10.);
                   vec3 baseColor = zappaBlakePalette(colorNoise * symbolicComplexity + 1.);
                   
                   float gray = dot(baseColor, vec3(0.299, 0.587, 0.114));
@@ -250,9 +250,9 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                imaginationStrength: { value: 0.35 },
-                dualityBalance: { value: 0.3 },
-                symbolicComplexity: { value: 1.0 },
+                imaginationStrength: { value: 2.9 },
+                dualityBalance: { value: 1 / 1.618 },
+                symbolicComplexity: { value: 0.7 },
                 timeFlow: { value: 2.0 }
             }
         });
