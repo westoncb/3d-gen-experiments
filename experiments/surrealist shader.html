@@ -16,19 +16,19 @@
     <div id="controls">
         <div class="control-group">
             <label for="imaginationStrength">Imagination Strength:</label>
-            <input type="range" id="imaginationStrength" min="0" max="2" step="0.01" value="1.0">
+            <input type="range" id="imaginationStrength" min="0" max="3" step="0.01" value="0.35">
         </div>
         <div class="control-group">
             <label for="dualityBalance">Duality Balance:</label>
-            <input type="range" id="dualityBalance" min="0" max="1" step="0.005" value="0.5">
+            <input type="range" id="dualityBalance" min="0" max="1" step="0.005" value="0.3">
         </div>
         <div class="control-group">
             <label for="symbolicComplexity">Symbolic Complexity:</label>
-            <input type="range" id="symbolicComplexity" min="1" max="10" step="0.01" value="5.0">
+            <input type="range" id="symbolicComplexity" min="0" max="10" step="0.01" value="1">
         </div>
         <div class="control-group">
             <label for="timeFlow">Time Flow:</label>
-            <input type="range" id="timeFlow" min="0.01" max="0.5" step="0.005" value="0.25">
+            <input type="range" id="timeFlow" min="0.01" max="2.0" step="0.005" value="2">
         </div>
     </div>
     <script type="module">
@@ -51,11 +51,12 @@
             uniform float timeFlow;
 
             #define MAX_STEPS 100
-            #define MAX_DIST 10.0
+            #define MAX_DIST 15.0
             #define SURF_DIST 0.001
             #define PI 3.14159265359
             #define SPATIAL_WARP 0.42
             #define HARMONIC_CHAOS 0.5
+            #define MAX_IMAGINATION 3.0
 
             float hash(vec3 p) {
               p = fract(p * vec3(443.8975,397.2973, 491.1871));
@@ -144,14 +145,14 @@
 
           // Main SDF function
           float map(vec3 p) {
-            vec3 wp = mix(p, warpSpace(p), imaginationStrength / 2.0);
+            vec3 wp = mix(p, warpSpace(p), imaginationStrength / MAX_IMAGINATION);
 
             vec3 param = wp + length(zappaFunction(wp.xz)) * 0.01;
             float tyger = sdTyger(param);
             float innocence = sdInnocence(param);
             float blendedShape = smoothstep(tyger, innocence, dualityBalance);
             float symbols = sin(p.x * symbolicComplexity) * cos(p.y * symbolicComplexity) * sin(p.z * symbolicComplexity);
-            return mix(symbols, blendedShape, 0.5) / symbols * (1.0 - imaginationStrength/2. + 0.61) / 7. + 0.03;
+            return mix(symbols, blendedShape, 0.5) / symbols * (1.0 - imaginationStrength / MAX_IMAGINATION + 0.61) / 7. + 0.03;
           }
 
             vec3 getNormal(vec3 p) {
@@ -249,10 +250,10 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                imaginationStrength: { value: 1.0 },
-                dualityBalance: { value: 0.5 },
-                symbolicComplexity: { value: 5.0 },
-                timeFlow: { value: 1.0 }
+                imaginationStrength: { value: 0.35 },
+                dualityBalance: { value: 0.3 },
+                symbolicComplexity: { value: 1.0 },
+                timeFlow: { value: 2.0 }
             }
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -261,7 +262,7 @@
         // Animation loop
         function animate(time) {
             requestAnimationFrame(animate);
-            material.uniforms.time.value = time * 0.001;
+            material.uniforms.time.value = time * 0.0005;
             renderer.render(scene, camera);
         }
         animate(0);
