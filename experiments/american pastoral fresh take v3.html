@@ -3,20 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Internal High-Dimensional Cross-Cultural Egregore</title>
+    <title>American Pastoral Raymarching Shader</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
         #controls { position: absolute; top: 10px; left: 10px; color: white; }
+        .slider-container { margin-bottom: 10px; }
+        .slider-label { display: inline-block; width: 200px; }
     </style>
 </head>
 <body>
     <div id="controls">
-        <label for="culturalBlendSlider">Cultural Blend:</label>
-        <input type="range" id="culturalBlendSlider" min="0" max="1" step="0.01" value="0.5">
-        <br>
-        <label for="dimensionalitySlider">Dimensionality:</label>
-        <input type="range" id="dimensionalitySlider" min="3" max="10" step="0.1" value="5">
+        <div class="slider-container">
+            <span class="slider-label">Idealism vs Reality:</span>
+            <input type="range" id="idealismSlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="slider-container">
+            <span class="slider-label">Cultural Upheaval:</span>
+            <input type="range" id="upheavalSlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="slider-container">
+            <span class="slider-label">Narrative Complexity:</span>
+            <input type="range" id="complexitySlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
     </div>
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
@@ -32,8 +41,9 @@
         const fragmentShader = `
             uniform float time;
             uniform vec2 resolution;
-            uniform float culturalBlend;
-            uniform float dimensionality;
+            uniform float idealism;
+            uniform float upheaval;
+            uniform float complexity;
 
             #define MAX_STEPS 100
             #define MAX_DIST 100.0
@@ -105,56 +115,50 @@
                 return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
             }
 
-            // Cultural symbol function
-            float culturalSymbol(vec3 p, float seed) {
-                float symbol = 0.0;
-                for(float i = 0.0; i < 3.0; i++) {
-                    float freq = pow(2.0, i);
-                    symbol += snoise(p * freq + seed * 100.0) / freq;
-                }
-                return symbol;
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
             }
 
-            // Inversion function
-            vec3 invert(vec3 p) {
-                return p / dot(p, p);
+            // Pastoral landscape (representing idealism)
+            float landscape(vec3 p) {
+                return sin(p.x * 0.2) * cos(p.z * 0.2) * 5.0 + p.y + 2.0;
             }
 
-            // Modified egregore field function
-            float egregoreSDF(vec3 p) {
-                // Invert the space
-                p = invert(p);
-                
-                // Scale and offset
-                p *= 2.0;
-                p += vec3(sin(time * 0.1), cos(time * 0.15), sin(time * 0.2)) * 0.5;
-                
-                float d = length(p) - 1.0; // Base shape
-                
-                // Add cultural symbols
-                float symbols = 0.0;
-                for(float i = 0.0; i < dimensionality; i++) {
-                    symbols += culturalSymbol(p, i) * (1.0 / dimensionality);
+            // Industrial structure (representing reality)
+            float industry(vec3 p) {
+                vec3 q = mod(p, 4.0) - 2.0;
+                return length(max(abs(q) - vec3(1.0, 1.0, 1.0), 0.0)) - 0.1;
+            }
+
+            // Cultural upheaval
+            float upheavalEffect(vec3 p) {
+                return snoise(p * 0.1 + time * 0.1) * 2.0 * upheaval;
+            }
+
+            // Narrative complexity
+            float complexityEffect(vec3 p) {
+                float n = 0.0;
+                for (float i = 1.0; i <= 5.0; i++) {
+                    n += snoise(p * 0.2 * i + time * 0.05 * i) / i;
                 }
-                
-                // Blend cultures based on culturalBlend
-                float blendedSymbols = mix(culturalSymbol(p, 0.0), symbols, culturalBlend);
-                
-                // Distort the base shape with the blended symbols
-                d -= blendedSymbols * 0.3;
-                
-                // Add time-based distortion
-                d += sin(length(p) * 5.0 - time) * 0.1;
-                
-                return d;
+                return n * complexity;
+            }
+
+            float map(vec3 p) {
+                float d = smoothstep(landscape(p), industry(p), 0.5);
+                d = mix(landscape(p), d, idealism);
+                d *= upheavalEffect(p);
+                d += complexityEffect(p);
+                return d * 2.5;
             }
 
             vec3 getNormal(vec3 p) {
                 const vec2 e = vec2(.001, 0);
                 return normalize(vec3(
-                    egregoreSDF(p + e.xyy) - egregoreSDF(p - e.xyy),
-                    egregoreSDF(p + e.yxy) - egregoreSDF(p - e.yxy),
-                    egregoreSDF(p + e.yyx) - egregoreSDF(p - e.yyx)
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
                 ));
             }
 
@@ -167,24 +171,16 @@
                 return normalize(i);
             }
 
-            vec3 egregorePalette(float t) {
-                vec3 a = vec3(0.5, 0.5, 0.5);
-                vec3 b = vec3(0.5, 0.5, 0.5);
-                vec3 c = vec3(1.0, 1.0, 1.0);
-                vec3 d = vec3(0.263, 0.416, 0.557);
-                return a + b * cos(6.28318 * (c * t + d + culturalBlend));
-            }
-
             void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 vec2 uv = (fragCoord-.5*resolution.xy)/resolution.y;
-                vec3 ro = vec3(0.0, 0.0, -1.0); // Camera inside the structure
-                vec3 rd = getRayDir(uv, ro, vec3(0,0,1), 1.);
+                vec3 ro = vec3(15.0 * cos(time * 0.1), 10.0, 15.0 * sin(time * 0.1));
+                vec3 rd = getRayDir(uv, ro, vec3(0,0,0), 1.);
 
                 float d = 0.0, t = 0.0;
                 for(int i = 0; i < MAX_STEPS; i++) {
                     vec3 p = ro + rd * d;
-                    t = egregoreSDF(p);
-                    if(t < SURF_DIST || d > MAX_DIST) break;
+                    t = map(p);
+                    if(abs(t) < SURF_DIST || d > MAX_DIST) break;
                     d += t;
                 }
 
@@ -194,19 +190,25 @@
                     vec3 n = getNormal(p);
                     vec3 r = reflect(rd, n);
 
+                    // Base color
+                    col = vec3(0.5) + 0.5 * sin(vec3(0.0, 0.33, 0.67) * 6.28318 + length(p) * 0.1);
+
+                    // Lighting
                     float dif = dot(n, normalize(vec3(1,2,3)))*.5+.5;
-                    col = egregorePalette(length(p) * 0.1 + time * 0.05);
                     col *= dif;
 
-                    float fresnel = pow(1.0 + dot(rd, n), 4.0);
-                    col += fresnel * 0.5;
+                    // Idealism vs Reality color shift
+                    col = mix(col, col.brg, idealism);
 
-                    // Add "energy flow" effect
-                    col += vec3(0.1, 0.2, 0.3) * sin(length(p) * 5.0 - time * 2.0) * 0.5;
+                    // Cultural upheaval effect
+                    col += vec3(1,0,0) * upheavalEffect(p) * 0.2;
+
+                    // Narrative complexity effect
+                    col = mix(col, 1.0 - col, complexityEffect(p) * 0.2);
                 }
 
-                // Ethereal glow
-                col += vec3(0.1, 0.1, 0.2) * (1.0 - exp(-0.001 * d * d));
+                // Fog
+                col = mix(col, vec3(0.7,0.8,1.0), 1.0-exp(-0.0001*d*d));
 
                 fragColor = vec4(col, 1.0);
             }
@@ -231,8 +233,9 @@
             uniforms: {
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                culturalBlend: { value: 0.5 },
-                dimensionality: { value: 5.0 }
+                idealism: { value: 0.5 },
+                upheaval: { value: 0.5 },
+                complexity: { value: 0.5 }
             }
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -255,14 +258,14 @@
         });
 
         // Handle sliders
-        const culturalBlendSlider = document.getElementById('culturalBlendSlider');
-        culturalBlendSlider.addEventListener('input', (event) => {
-            material.uniforms.culturalBlend.value = parseFloat(event.target.value);
+        document.getElementById('idealismSlider').addEventListener('input', (event) => {
+            material.uniforms.idealism.value = parseFloat(event.target.value);
         });
-
-        const dimensionalitySlider = document.getElementById('dimensionalitySlider');
-        dimensionalitySlider.addEventListener('input', (event) => {
-            material.uniforms.dimensionality.value = parseFloat(event.target.value);
+        document.getElementById('upheavalSlider').addEventListener('input', (event) => {
+            material.uniforms.upheaval.value = parseFloat(event.target.value);
+        });
+        document.getElementById('complexitySlider').addEventListener('input', (event) => {
+            material.uniforms.complexity.value = parseFloat(event.target.value);
         });
     </script>
 </body>

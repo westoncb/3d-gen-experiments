@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frank Zappa's Subconscious Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="dissonanceSlider">Dissonance:</label>
+        <input type="range" id="dissonanceSlider" min="0" max="1" step="0.01" value="0.5">
+        <br>
+        <label for="complexitySlider">Complexity:</label>
+        <input type="range" id="complexitySlider" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float dissonance;
+            uniform float complexity;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // Pseudo-random function
+            float random(vec2 st) {
+                return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+            }
+
+            // 2D Noise
+            float noise(vec2 st) {
+                vec2 i = floor(st);
+                vec2 f = fract(st);
+                float a = random(i);
+                float b = random(i + vec2(1.0, 0.0));
+                float c = random(i + vec2(0.0, 1.0));
+                float d = random(i + vec2(1.0, 1.0));
+                vec2 u = f * f * (3.0 - 2.0 * f);
+                return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+            }
+
+            // Fractal Brownian Motion
+            float fbm(vec2 st) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                float frequency = 0.0;
+                for (int i = 0; i < 6; i++) {
+                    value += amplitude * noise(st);
+                    st *= 2.0;
+                    amplitude *= 0.5;
+                }
+                return value;
+            }
+
+            // Twisted SDF
+            float twistedSDF(vec3 p) {
+                float twist = sin(p.y * 0.5 + time) * dissonance;
+                float c = cos(twist);
+                float s = sin(twist);
+                mat2 m = mat2(c, -s, s, c);
+                vec3 q = vec3(m * p.xz, p.y);
+                return length(q) - 1.0 + fbm(q.xy * 2.0) * 0.5 * complexity;
+            }
+
+            // Zappa's Mustache SDF
+            float mustacheSDF(vec3 p) {
+                p.x = abs(p.x);
+                float mustache = length(p.xy - vec2(0.3, -0.1)) - 0.1;
+                mustache = max(mustache, p.y + 0.15);
+                return mustache;
+            }
+
+            vec3 spiralInvert(vec3 p) {
+                float r = length(p.xz);
+                float theta = atan(p.z, p.x);
+                float y = p.y;
+                
+                // Spiral factor
+                float a = 1.618;
+                
+                // Invert radius
+                float newR = 1.0 / (r + 0.9999);
+                
+                // Add spiral effect
+                theta += a * log(newR);
+                
+                // Scale y based on new radius
+                y *= newR;
+                
+                return vec3(newR * cos(theta), y, newR * sin(theta));
+            }
+
+            // Combined SDF
+            float worldSDF(vec3 p) {
+                p = spiralInvert(p);
+
+                float twisted = twistedSDF(p);
+                float mustache = mustacheSDF(p);
+                return min(twisted, mustache);
+            }
+
+            vec3 getNormal(vec3 p) {
+                const vec2 e = vec2(.001, 0);
+                return normalize(vec3(
+                    worldSDF(p + e.xyy) - worldSDF(p - e.xyy),
+                    worldSDF(p + e.yxy) - worldSDF(p - e.yxy),
+                    worldSDF(p + e.yyx) - worldSDF(p - e.yyx)
+                ));
+            }
+
+            vec3 getRayDir(vec2 uv, vec3 p, vec3 l, float z) {
+                vec3 f = normalize(l-p),
+                     r = normalize(cross(vec3(0,1,0), f)),
+                     u = cross(f,r),
+                     c = f*z,
+                     i = c + uv.x*r + uv.y*u;
+                return normalize(i);
+            }
+
+            vec3 zappaPalette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.3, 0.2, 0.2);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord-.5*resolution.xy)/resolution.y;
+                vec3 ro = vec3(0, 0, -3);
+                vec3 rd = getRayDir(uv, ro, vec3(0,0,0), 1.);
+
+                float d = 0.0;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * d;
+                    float ds = worldSDF(p);
+                    d += ds;
+                    if(ds < SURF_DIST || d > MAX_DIST) break;
+                }
+
+                vec3 col = vec3(0);
+                if(d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    vec3 r = reflect(rd, n);
+
+                    float dif = dot(n, normalize(vec3(1,2,3)))*.5+.5;
+                    col = zappaPalette(length(p) * 0.1 + time * 0.05);
+                    col *= dif;
+
+                    float fresnel = pow(1.0 + dot(rd, n), 4.0);
+                    col += fresnel * 0.5 * vec3(1.0, 0.7, 0.3); // Zappa-esque glow
+
+                    // Add "psychedelic" effect
+                    col += vec3(0.5, 0.2, 0.8) * sin(p.z * 10.0 + time * 2.0) * 0.2 * complexity;
+                }
+
+                // Vignette
+                col *= 1.0 - 0.5 * length(uv);
+
+                // Psychedelic color shift
+                col = mix(col, vec3(col.g, col.b, col.r), sin(time) * 0.5 + 0.5);
+
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                dissonance: { value: 0.5 },
+                complexity: { value: 0.5 }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle sliders
+        const dissonanceSlider = document.getElementById('dissonanceSlider');
+        dissonanceSlider.addEventListener('input', (event) => {
+            material.uniforms.dissonance.value = parseFloat(event.target.value);
+        });
+
+        const complexitySlider = document.getElementById('complexitySlider');
+        complexitySlider.addEventListener('input', (event) => {
+            material.uniforms.complexity.value = parseFloat(event.target.value);
+        });
+    </script>
+</body>
+</html>

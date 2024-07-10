@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>William Blake Visionary Raymarching Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; font-family: monospace; }
+        .control-group { margin-bottom: 5px; }
+        label { display: inline-block; width: 200px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-group">
+            <label for="imaginationStrength">Imagination Strength:</label>
+            <input type="range" id="imaginationStrength" min="0" max="2" step="0.01" value="1.0">
+        </div>
+        <div class="control-group">
+            <label for="dualityBalance">Duality Balance:</label>
+            <input type="range" id="dualityBalance" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label for="symbolicComplexity">Symbolic Complexity:</label>
+            <input type="range" id="symbolicComplexity" min="1" max="10" step="0.1" value="5.0">
+        </div>
+        <div class="control-group">
+            <label for="timeFlow">Time Flow:</label>
+            <input type="range" id="timeFlow" min="0.01" max="0.5" step="0.005" value="0.25">
+        </div>
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float imaginationStrength;
+            uniform float dualityBalance;
+            uniform float symbolicComplexity;
+            uniform float timeFlow;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 10.0
+            #define SURF_DIST 0.001
+            #define PI 3.14159265359
+            #define SPATIAL_WARP 0.42
+            #define HARMONIC_CHAOS 0.5
+
+            float hash(vec3 p) {
+              p = fract(p * vec3(443.8975,397.2973, 491.1871));
+              p += dot(p.zxy, p.yxz+19.27);
+              return fract(p.x * p.y * p.z);
+            }
+
+            float noise(vec3 p) {
+              vec3 i = floor(p);
+              vec3 f = fract(p);
+              f = f * f * (3.0 - 2.0 * f);
+              return mix(
+                mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                    mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                    mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+            }
+
+            // Complex number operations
+            vec2 cmul(vec2 a, vec2 b) {
+                return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+            }
+
+            vec2 cdiv(vec2 a, vec2 b) {
+                float denom = dot(b, b);
+                return vec2(dot(a, b), a.y*b.x - a.x*b.y) / denom;
+            }
+
+            // 3D to 2D complex mapping
+            vec2 map3Dto2D(vec3 p) {
+                float r = length(p);
+                float theta = atan(p.y, p.x);
+                float phi = acos(p.z / r);
+                return vec2(r * sin(phi) * cos(theta), r * sin(phi) * sin(theta));
+            }
+
+            // Rotation matrix
+            mat2 rot2(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // Smooth min function for soft blending
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            vec3 warpSpace(vec3 p) {
+                float scaledTime = time * 0.1;
+                float warpFactor = SPATIAL_WARP * 2.0;
+                vec3 q = p;
+                q.x += sin(p.z * warpFactor + scaledTime) * 0.5;
+                q.y += cos(p.x * warpFactor + scaledTime * 1.2) * 0.5;
+                q.z += sin(p.y * warpFactor + scaledTime * 0.8) * 0.5;
+                return q;
+            }
+
+            // Blake's "Tyger" inspired shape
+            float sdTyger(vec3 p) {
+                p.yz *= rot2(sin(time * timeFlow) * 0.2);
+                p.xz *= rot2(cos(time * timeFlow * 0.7) * 0.2);
+                
+                float body = length(p / vec3(1.2, 0.7, 0.9)) - 0.7;
+                
+                vec3 q = abs(p) - vec3(0.8, 0.3, 0.5);
+                float stripes = max(q.x, max(q.y, q.z));
+                
+                return smin(body, stripes, 0.1) * 0.8;
+            }
+
+            // Blake's "Innocence" inspired shape
+            float sdInnocence(vec3 p) {
+                p.xz *= rot2(time * timeFlow * 0.5);
+                float sphere = length(p) - 0.8;
+                float waves = sin(p.x * 10.0 + time * timeFlow) * sin(p.y * 10.0 + time * timeFlow) * sin(p.z * 10.0 + time * timeFlow) * 0.1;
+                return sphere + waves;
+            }
+
+            // Zappa-inspired complex function
+            vec2 zappaFunction(vec2 z) {
+                vec2 z2 = cmul(z, z);
+                vec2 z3 = cmul(z, z2);
+                return cdiv(z3 + vec2(1.0, 0.0), z2 + vec2(0.5, 0.0));
+            }
+
+          // Main SDF function
+          float map(vec3 p) {
+            vec3 wp = mix(p, warpSpace(p), imaginationStrength / 2.0);
+
+            vec3 param = wp + length(zappaFunction(wp.xz)) * 0.01;
+            float tyger = sdTyger(param);
+            float innocence = sdInnocence(param);
+            float blendedShape = smoothstep(tyger, innocence, dualityBalance);
+            float symbols = sin(p.x * symbolicComplexity) * cos(p.y * symbolicComplexity) * sin(p.z * symbolicComplexity);
+            return mix(symbols, blendedShape, 0.5) / symbols * (1.0 - imaginationStrength/2. + 0.61) / 7. + 0.03;
+          }
+
+            vec3 getNormal(vec3 p) {
+                const vec2 e = vec2(.001, 0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            vec3 getRayDir(vec2 uv, vec3 p, vec3 l, float z) {
+                vec3 f = normalize(l - p),
+                     r = normalize(cross(vec3(0, 1, 0), f)),
+                     u = cross(f, r),
+                     c = f * z,
+                     i = c + uv.x * r + uv.y * u;
+                return normalize(i);
+            }
+
+            float lerp(float a, float b, float t) {
+                return a + t * (b - a);
+            }
+
+            vec3 zappaPalette(vec3 p) {
+                vec3 a = vec3(0.25, 0.15, 0.75);
+                vec3 b = vec3(0.35, 0.75, 0.45);
+                vec3 c = vec3(0.6, 0.42, 0.818);
+                vec3 d = vec3(0.3, 0.2, 0.2);
+                return a + b * cos(6.28318 * (c * p + d));
+            }
+
+                  vec3 zappaBlaketPalette(float t) {
+                    vec3 a = vec3(0.8, 0.5, 0.4);
+                    vec3 b = vec3(0.2, 0.4, 0.2);
+                    vec3 c = vec3(2.0, 1.0, 1.0);
+                    vec3 d = vec3(0.00, 0.25, 0.25);
+                    return a + b * cos(6.28318 * (c * t + d));
+                  }
+
+            vec3 psychedelicPalette(float t) {
+              vec3 a = vec3(0.1, 0.1, 0.1);  // Darker base
+              vec3 b = vec3(0.4, 0.4, 0.4);  // Reduced color variation
+              vec3 c = vec3(1.0, 0.7, 0.4);  // Warm accent
+              vec3 d = vec3(0.7, 0.2, 0.2);  // Reddish tint
+
+              vec3 color = a + b * cos(6.28318 * (c * t + d));
+              color = pow(color, vec3(1.02, 1.01, 1.01));  // Subtle color balance adjustment
+              return color;
+            }
+
+            vec3 psychedelicNoirPalette(float t) {
+    vec3 a = vec3(0.1, 0.1, 0.1);  // Darker base
+    vec3 b = vec3(0.4, 0.4, 0.4);  // Reduced color variation
+    vec3 c = vec3(1.0, 0.7, 0.4);  // Warm accent
+    vec3 d = vec3(0.7, 0.2, 0.2);  // Reddish tint
+
+    vec3 color = a + b * cos(6.28318 * (c * t + d));
+    color = pow(color, vec3(1.2, 1.1, 1.0));  // Subtle color balance adjustment
+    return color;
+}
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - .5 * resolution.xy) / resolution.y;
+                vec3 ro = vec3(3. * sin(time * timeFlow * 0.1), 2., -3. * cos(time * timeFlow * 0.1));
+                vec3 rd = getRayDir(uv, ro, vec3(0, 0, 0), 1.);
+
+                float d = 0., t = 0.;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * d;
+                    t = map(p);
+                    if(abs(t) < SURF_DIST || d > MAX_DIST) break;
+                    d += t;
+                }
+
+                vec3 col = vec3(0);
+                if(d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    vec3 r = reflect(rd, n);
+
+
+                  float diff = dot(n, normalize(vec3(1, 2, 3))) * .5 + .5;
+                  float spec = pow(max(dot(r, normalize(vec3(1, 2, 3))), 0.), 32.);
+                  float fresnel = pow(1. + dot(rd, n), imaginationStrength);
+
+                  vec3 q = mix(p, p * noise(p), symbolicComplexity / 10.);
+                  float colorNoise = length(p) * (1.0 - symbolicComplexity/10.) + noise(q * symbolicComplexity + time * timeFlow * 0.05) * (symbolicComplexity/10.);
+                  vec3 baseColor = psychedelicPalette(colorNoise * symbolicComplexity + 1.);
+                  
+                  // Blend between grayscale and psychedelic based on imaginationStrength
+                  float gray = dot(baseColor, vec3(0.299, 0.587, 0.114));
+                  baseColor = mix(vec3(gray), baseColor, imaginationStrength);
+                  
+                  col = baseColor * diff + fresnel * 0.25;
+                  col += baseColor * 0.05 / (0.05 + d * d * 0.1);
+
+                  // float fogAmount = 1.0 - exp(-d * 0.15);
+                  // col = mix(col, vec3(0.5, 0.6, 0.7), fogAmount);
+                } else {
+                    col = vec3(0., 0., 0.);
+                }
+
+                // Gamma correction
+                col = pow(col, vec3(0.4545));
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                imaginationStrength: { value: 1.0 },
+                dualityBalance: { value: 0.5 },
+                symbolicComplexity: { value: 5.0 },
+                timeFlow: { value: 1.0 }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle debug controls
+        ['imaginationStrength', 'dualityBalance', 'symbolicComplexity', 'timeFlow'].forEach(param => {
+            document.getElementById(param).addEventListener('input', (event) => {
+                material.uniforms[param].value = parseFloat(event.target.value);
+            });
+        });
+    </script>
+</body>
+</html>

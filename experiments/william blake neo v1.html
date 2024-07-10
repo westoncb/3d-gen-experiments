@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>William Blake Inspired Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; }
+        .slider-container { margin-bottom: 10px; }
+        .slider-label { display: inline-block; width: 200px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="slider-container">
+            <span class="slider-label">Mystical Intensity:</span>
+            <input type="range" id="mysticalSlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="slider-container">
+            <span class="slider-label">Visionary Complexity:</span>
+            <input type="range" id="complexitySlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="slider-container">
+            <span class="slider-label">Poetic Integration:</span>
+            <input type="range" id="poeticSlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float mysticalIntensity;
+            uniform float visionaryComplexity;
+            uniform float poeticIntegration;
+
+            varying vec2 vUv;
+
+            #define PI 3.14159265359
+
+            // Simplex noise function
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+            float snoise(vec3 v) {
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+                vec3 i  = floor(v + dot(v, C.yyy));
+                vec3 x0 = v - i + dot(i, C.xxx);
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min(g.xyz, l.zxy);
+                vec3 i2 = max(g.xyz, l.zxy);
+                vec3 x1 = x0 - i1 + C.xxx;
+                vec3 x2 = x0 - i2 + C.yyy;
+                vec3 x3 = x0 - D.yyy;
+                i = mod289(i);
+                vec4 p = permute(permute(permute(
+                    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+                float n_ = 0.142857142857;
+                vec3 ns = n_ * D.wyz - D.xzx;
+                vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_);
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                vec4 b0 = vec4(x.xy, y.xy);
+                vec4 b1 = vec4(x.zw, y.zw);
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+                vec3 p0 = vec3(a0.xy, h.x);
+                vec3 p1 = vec3(a0.zw, h.y);
+                vec3 p2 = vec3(a1.xy, h.z);
+                vec3 p3 = vec3(a1.zw, h.w);
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+                p0 *= norm.x;
+                p1 *= norm.y;
+                p2 *= norm.z;
+                p3 *= norm.w;
+                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+            }
+
+            // Function to create Blake-like swirling patterns
+            vec3 blakeSwirls(vec2 uv, float time) {
+                float n = snoise(vec3(uv * 5.0, time * 0.2)) * 0.5 + 0.5;
+                float spiral = fract(atan(uv.y, uv.x) / (2.0 * PI) + 0.5 + time * 0.1);
+                float r = length(uv);
+                float intensity = smoothstep(0.0, 0.5, r) * smoothstep(1.0, 0.5, r);
+                return vec3(n * spiral * intensity);
+            }
+
+            // Function to create text-like patterns
+            float textPattern(vec2 uv, float scale) {
+                vec2 gv = fract(uv * scale) - 0.5;
+                return smoothstep(0.4, 0.6, abs(sin(gv.x * 10.0) * cos(gv.y * 10.0)));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * resolution) / resolution.y;
+                vec3 color = vec3(0.0);
+
+                // Blake's mystical swirls
+                vec3 swirls = blakeSwirls(uv, time);
+                color += swirls * mysticalIntensity;
+
+                // Visionary complexity
+                float complexity = snoise(vec3(uv * 10.0, time * 0.1)) * visionaryComplexity;
+                color += vec3(complexity * 0.5 + 0.5) * (1.0 - mysticalIntensity);
+
+                // Poetic text integration
+                float text = textPattern(uv, 20.0 + 10.0 * sin(time * 0.2));
+                color = mix(color, vec3(1.0) - color, text * poeticIntegration);
+
+                // Blake's color palette
+                vec3 blakeRed = vec3(0.7, 0.1, 0.1);
+                vec3 blakeYellow = vec3(0.9, 0.7, 0.1);
+                vec3 blakeBlue = vec3(0.1, 0.3, 0.6);
+
+                color = mix(mix(blakeRed, blakeYellow, color.x), blakeBlue, color.y);
+
+                // Vignette effect
+                float vignette = smoothstep(1.0, 0.3, length(uv));
+                color *= vignette;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                mysticalIntensity: { value: 0.5 },
+                visionaryComplexity: { value: 0.5 },
+                poeticIntegration: { value: 0.5 }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle sliders
+        document.getElementById('mysticalSlider').addEventListener('input', (event) => {
+            material.uniforms.mysticalIntensity.value = parseFloat(event.target.value);
+        });
+        document.getElementById('complexitySlider').addEventListener('input', (event) => {
+            material.uniforms.visionaryComplexity.value = parseFloat(event.target.value);
+        });
+        document.getElementById('poeticSlider').addEventListener('input', (event) => {
+            material.uniforms.poeticIntegration.value = parseFloat(event.target.value);
+        });
+    </script>
+</body>
+</html>

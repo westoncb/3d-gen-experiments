@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>William Blake Inspired Raymarching Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; }
+        .control-group { margin-bottom: 10px; }
+        .control-label { display: inline-block; width: 200px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-group">
+            <span class="control-label">Fractal Type:</span>
+            <input type="radio" id="mandelbulb" name="fractalType" value="0" checked>
+            <label for="mandelbulb">Mandelbulb</label>
+            <input type="radio" id="juliaSet" name="fractalType" value="1">
+            <label for="juliaSet">Julia Set</label>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Color Scheme:</span>
+            <input type="radio" id="colorScheme1" name="colorScheme" value="0" checked>
+            <label for="colorScheme1">Scheme 1</label>
+            <input type="radio" id="colorScheme2" name="colorScheme" value="1">
+            <label for="colorScheme2">Scheme 2</label>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Fractal Parameter:</span>
+            <input type="range" id="fractalParam" min="1" max="10" step="0.1" value="8">
+        </div>
+        <div class="control-group">
+            <span class="control-label">Distortion Amount:</span>
+            <input type="range" id="distortionAmount" min="0" max="1" step="0.01" value="0.5">
+        </div>
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform int fractalType;
+            uniform int colorScheme;
+            uniform float fractalParam;
+            uniform float distortionAmount;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // Simplex noise function
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+            float snoise(vec3 v) {
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+                vec3 i  = floor(v + dot(v, C.yyy));
+                vec3 x0 = v - i + dot(i, C.xxx);
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min(g.xyz, l.zxy);
+                vec3 i2 = max(g.xyz, l.zxy);
+                vec3 x1 = x0 - i1 + C.xxx;
+                vec3 x2 = x0 - i2 + C.yyy;
+                vec3 x3 = x0 - D.yyy;
+                i = mod289(i);
+                vec4 p = permute(permute(permute(
+                    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+                float n_ = 0.142857142857;
+                vec3 ns = n_ * D.wyz - D.xzx;
+                vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_);
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                vec4 b0 = vec4(x.xy, y.xy);
+                vec4 b1 = vec4(x.zw, y.zw);
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+                vec3 p0 = vec3(a0.xy, h.x);
+                vec3 p1 = vec3(a0.zw, h.y);
+                vec3 p2 = vec3(a1.xy, h.z);
+                vec3 p3 = vec3(a1.zw, h.w);
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+                p0 *= norm.x;
+                p1 *= norm.y;
+                p2 *= norm.z;
+                p3 *= norm.w;
+                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+            }
+
+            vec3 rotateY(vec3 p, float a) {
+                float c = cos(a), s = sin(a);
+                return vec3(c*p.x - s*p.z, p.y, s*p.x + c*p.z);
+            }
+
+            float sdMandelbulb(vec3 p) {
+                vec3 w = p;
+                float m = dot(w, w);
+                vec4 trap = vec4(abs(w), m);
+                float dz = 1.0;
+                
+                for(int i = 0; i < 4; i++) {
+                    float m2 = m * m;
+                    float m4 = m2 * m2;
+                    dz = 8.0 * sqrt(m4 * m2 * m) * dz + 1.0;
+                    
+                    float x = w.x; float x2 = x*x; float x4 = x2*x2;
+                    float y = w.y; float y2 = y*y; float y4 = y2*y2;
+                    float z = w.z; float z2 = z*z; float z4 = z2*z2;
+                    
+                    float k3 = x2 + z2;
+                    float k2 = inversesqrt(k3*k3*k3*k3*k3*k3*k3);
+                    float k1 = x4 + y4 + z4 - 6.0*y2*z2 - 6.0*x2*y2 + 2.0*z2*x2;
+                    float k4 = x2 - y2 + z2;
+                    
+                    w.x = p.x + 64.0*x*y*z*(x2-z2)*k4*(x4-6.0*x2*z2+z4)*k1*k2;
+                    w.y = p.y + -16.0*y2*k3*k4*k4 + k1*k1;
+                    w.z = p.z + -8.0*y*k4*(x4*x4 - 28.0*x4*x2*z2 + 70.0*x4*z4 - 28.0*x2*z2*z4 + z4*z4)*k1*k2;
+                    
+                    trap = min(trap, vec4(abs(w), m));
+                    
+                    m = dot(w, w);
+                    if(m > 256.0) break;
+                }
+                
+                return 0.25 * log(m) * sqrt(m) / dz;
+            }
+
+            float sdJulia(vec3 p) {
+                vec4 c = vec4(-0.1, 0.651, -0.4, 0.0);
+                vec4 z = vec4(p, 0.0);
+                float md2 = 1.0;
+                float mz2 = dot(z, z);
+
+                for(int i = 0; i < 11; i++) {
+                    md2 *= 4.0 * mz2;
+                    z = vec4(z.x * z.x - dot(z.yzw, z.yzw),
+                             2.0 * z.x * z.yzw) + c;
+
+                    mz2 = dot(z, z);
+                    if(mz2 > 4.0) break;
+                }
+                
+                return 0.25 * sqrt(mz2 / md2) * log(mz2);
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float map(vec3 p) {
+                p = rotateY(p, time * 0.2);
+                float distortion = snoise(p * 0.1 + time * 0.05) * distortionAmount;
+                p += distortion;
+
+
+                return smin(sdMandelbulb(p / fractalParam) * fractalParam, sdJulia(p / fractalParam) * fractalParam, fractalParam + distortionAmount) * 0.001;
+            }
+
+            vec3 getNormal(vec3 p) {
+                const vec2 e = vec2(.001, 0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            vec3 getRayDir(vec2 uv, vec3 p, vec3 l, float z) {
+                vec3 f = normalize(l - p),
+                     r = normalize(cross(vec3(0, 1, 0), f)),
+                     u = cross(f, r),
+                     c = f * z,
+                     i = c + uv.x * r + uv.y * u;
+                return normalize(i);
+            }
+
+            vec3 blakeColorScheme1(float t) {
+                return vec3(0.5 + 0.5*sin(t*6.23 + 0.8),
+                            0.5 + 0.5*sin(t*4.14 + 2.2),
+                            0.5 + 0.5*sin(t*3.57 + 4.6));
+            }
+
+            vec3 blakeColorScheme2(float t) {
+                return vec3(0.5 + 0.5*sin(t*5.11 + 1.9),
+                            0.5 + 0.5*sin(t*3.86 + 3.3),
+                            0.5 + 0.5*sin(t*2.79 + 5.7));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - .5 * resolution.xy) / resolution.y;
+                vec3 ro = vec3(3. * sin(time * 0.1), 2., 3. * cos(time * 0.1));
+                vec3 rd = getRayDir(uv, ro, vec3(0, 0, 0), 1.);
+
+                float d = 0., t = 0.;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * d;
+                    t = map(p);
+                    if(abs(t) < SURF_DIST || d > MAX_DIST) break;
+                    d += t;
+                }
+
+                vec3 col = vec3(0);
+                if(d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    vec3 r = reflect(rd, n);
+
+                    float dif = dot(n, normalize(vec3(1, 2, 3))) * .5 + .5;
+                    float spec = pow(max(dot(r, normalize(vec3(1, 2, 3))), 0.), 32.);
+                    float fre = pow(1. + dot(n, rd), 4.);
+
+                    float t = length(p) * 0.1 + time * 0.1;
+                    vec3 baseColor = colorScheme == 0 ? blakeColorScheme1(t) : blakeColorScheme2(t);
+                    
+                    col = baseColor * dif + spec + fre * 0.5;
+                }
+
+                // fog
+                col = mix(col, vec3(0.1, 0.2, 0.3), 1.0 - exp(-0.0005 * d * d));
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                fractalType: { value: 0 },
+                colorScheme: { value: 0 },
+                fractalParam: { value: 8 },
+                distortionAmount: { value: 0.5 }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle controls
+        document.querySelectorAll('input[name="fractalType"]').forEach((elem) => {
+            elem.addEventListener("change", function(event) {
+                material.uniforms.fractalType.value = parseInt(event.target.value);
+            });
+        });
+
+        document.querySelectorAll('input[name="colorScheme"]').forEach((elem) => {
+            elem.addEventListener("change", function(event) {
+                material.uniforms.colorScheme.value = parseInt(event.target.value);
+            });
+        });
+
+        document.getElementById('fractalParam').addEventListener('input', (event) => {
+            material.uniforms.fractalParam.value = parseFloat(event.target.value);
+        });
+
+        document.getElementById('distortionAmount').addEventListener('input', (event) => {
+            material.uniforms.distortionAmount.value = parseFloat(event.target.value);
+        });
+    </script>
+</body>
+</html>

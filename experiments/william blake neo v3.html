@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>William Blake Inspired Raymarching Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; }
+        .control-group { margin-bottom: 10px; }
+        label { display: inline-block; width: 200px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-group">
+            <label for="fractalType">Fractal Type:</label>
+            <select id="fractalType">
+                <option value="0">Mandelbulb</option>
+                <option value="1">Mandelbox</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="fractalParam">Fractal Parameter:</label>
+            <input type="range" id="fractalParam" min="0" max="10" step="0.1" value="8">
+        </div>
+        <div class="control-group">
+            <label for="colorScheme">Color Scheme:</label>
+            <select id="colorScheme">
+                <option value="0">Blake's Palette</option>
+                <option value="1">Spectral</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="distortionStrength">Distortion Strength:</label>
+            <input type="range" id="distortionStrength" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="control-group">
+            <label for="textureOverlay">Texture Overlay:</label>
+            <input type="checkbox" id="textureOverlay" checked>
+        </div>
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform int fractalType;
+            uniform float fractalParam;
+            uniform int colorScheme;
+            uniform float distortionStrength;
+            uniform bool textureOverlay;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // Simplex noise function
+            vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+            vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+            float snoise(vec3 v){ 
+                const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+                const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+                vec3 i  = floor(v + dot(v, C.yyy) );
+                vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min( g.xyz, l.zxy );
+                vec3 i2 = max( g.xyz, l.zxy );
+
+                vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+                vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+                vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+
+                i = mod(i, 289.0 ); 
+                vec4 p = permute( permute( permute( 
+                            i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                        + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                        + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+                float n_ = 1.0/7.0;
+                vec3  ns = n_ * D.wyz - D.xzx;
+
+                vec4 j = p - 49.0 * floor(p * ns.z *ns.z);
+
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_ );
+
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+
+                vec4 b0 = vec4( x.xy, y.xy );
+                vec4 b1 = vec4( x.zw, y.zw );
+
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+                vec3 p0 = vec3(a0.xy,h.x);
+                vec3 p1 = vec3(a0.zw,h.y);
+                vec3 p2 = vec3(a1.xy,h.z);
+                vec3 p3 = vec3(a1.zw,h.w);
+
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                p0 *= norm.x;
+                p1 *= norm.y;
+                p2 *= norm.z;
+                p3 *= norm.w;
+
+                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                            dot(p2,x2), dot(p3,x3) ) );
+            }
+
+            float mandelbulb(vec3 p) {
+                vec3 w = p;
+                float m = dot(w,w);
+                float dz = 1.0;
+                
+                for (int i = 0; i < 4; i++) {
+                    dz = fractalParam * pow(sqrt(m), fractalParam - 1.0) * dz + 1.0;
+                    
+                    float r = length(w);
+                    float b = fractalParam * acos(w.y / r);
+                    float a = fractalParam * atan(w.x, w.z);
+                    w = p + pow(r, fractalParam) * vec3(sin(b) * sin(a), cos(b), sin(b) * cos(a));
+                    
+                    m = dot(w, w);
+                    if(m > 256.0) break;
+                }
+                return 0.25 * log(m) * sqrt(m) / dz;
+            }
+
+            float mandelbox(vec3 p) {
+                vec3 z = p;
+                float dr = 1.0;
+                float r = 0.0;
+                
+                for (int i = 0; i < 15; i++) {
+                    r = length(z);
+                    if (r > 2.0) break;
+                    
+                    float zr = 2.0 / r;
+                    if (r < 0.5) {
+                        z *= 4.0;
+                        dr *= 4.0;
+                    } else if (r < 1.0) {
+                        z *= zr;
+                        dr *= zr;
+                    }
+                    
+                    z = fractalParam * z - fractalParam * sign(z) * (fractalParam - 1.0);
+                    dr = dr * abs(fractalParam) + 1.0;
+                }
+                return (length(z) - 2.0) / abs(dr);
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float sdf(vec3 p) {
+                vec3 q = p - vec3(0, 0, 5);
+                float displacement = snoise(q + vec3(0, 0, time * 0.2)) * 0.15;
+                q += displacement;
+                
+                float d = smin(mandelbulb(q * 0.1), mandelbox(q * 0.1), fractalParam + distortionStrength) * 50.01;
+                
+                return d;
+            }
+
+            vec3 getNormal(vec3 p) {
+                const vec2 e = vec2(.001, 0);
+                return normalize(vec3(
+                    sdf(p + e.xyy) - sdf(p - e.xyy),
+                    sdf(p + e.yxy) - sdf(p - e.yxy),
+                    sdf(p + e.yyx) - sdf(p - e.yyx)
+                ));
+            }
+
+            vec3 blakePalette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.3, 0.2, 0.2);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            vec3 spectralPalette(float t) {
+                return vec3(
+                    sin(t * 6.28318) * 0.5 + 0.5,
+                    sin(t * 6.28318 + 2.0944) * 0.5 + 0.5,
+                    sin(t * 6.28318 + 4.18879) * 0.5 + 0.5
+                );
+            }
+
+            vec3 getRayDir(vec2 uv, vec3 p, vec3 l, float z) {
+                vec3 f = normalize(l-p),
+                     r = normalize(cross(vec3(0,1,0), f)),
+                     u = cross(f,r),
+                     c = f*z,
+                     i = c + uv.x*r + uv.y*u;
+                return normalize(i);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - .5 * resolution.xy) / resolution.y;
+                vec3 ro = vec3(3. * sin(time * 0.1), 2., -3. * cos(time * 0.1));
+                vec3 rd = getRayDir(uv, ro, vec3(0,0,0), 1.);
+
+                float d = 0., t = 0.;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * d;
+                    t = sdf(p);
+                    if(abs(t) < SURF_DIST || d > MAX_DIST) break;
+                    d += t;
+                }
+
+                vec3 col = vec3(0);
+                if(d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    vec3 r = reflect(rd, n);
+
+                    float diff = dot(n, normalize(vec3(1,2,3)))*.5+.5;
+                    float spec = pow(max(dot(r, normalize(vec3(1,2,3))), 0.0), 32.0);
+                    float fresnel = pow(1. + dot(rd, n), 5.);
+                    
+                    float t = length(p) * 0.1 + time * 0.1;
+                    vec3 baseColor = colorScheme == 0 ? blakePalette(t) : spectralPalette(t);
+                    
+                    col = baseColor * diff + spec + fresnel * 0.5;
+
+                    if (textureOverlay) {
+                        float noise = snoise(p * 10.0 + time * 0.1);
+                        col = mix(col, vec3(noise), 0.2);
+                    }
+                }
+
+                col = pow(col, vec3(0.4545));  // gamma correction
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                fractalType: { value: 0 },
+                fractalParam: { value: 8.0 },
+                colorScheme: { value: 0 },
+                distortionStrength: { value: 0.5 },
+                textureOverlay: { value: true }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle controls
+        document.getElementById('fractalType').addEventListener('change', (event) => {
+            material.uniforms.fractalType.value = parseInt(event.target.value);
+        });
+
+        document.getElementById('fractalParam').addEventListener('input', (event) => {
+            material.uniforms.fractalParam.value = parseFloat(event.target.value);
+        });
+
+        document.getElementById('colorScheme').addEventListener('change', (event) => {
+            material.uniforms.colorScheme.value = parseInt(event.target.value);
+        });
+
+        document.getElementById('distortionStrength').addEventListener('input', (event) => {
+            material.uniforms.distortionStrength.value = parseFloat(event.target.value);
+        });
+
+        document.getElementById('textureOverlay').addEventListener('change', (event) => {
+            material.uniforms.textureOverlay.value = event.target.checked;
+        });
+    </script>
+</body>
+</html>

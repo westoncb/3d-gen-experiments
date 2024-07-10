@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>William Blake Inspired Fundamental Raymarching Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; font-family: monospace; }
+        .control-group { margin-bottom: 5px; }
+        label { display: inline-block; width: 120px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-group">
+            <label for="param1">Warp Factor:</label>
+            <input type="range" id="param1" min="0" max="2" step="0.01" value="1">
+        </div>
+        <div class="control-group">
+            <label for="param2">Fold Intensity:</label>
+            <input type="range" id="param2" min="0" max="2" step="0.01" value="1">
+        </div>
+        <div class="control-group">
+            <label for="param3">Color Shift:</label>
+            <input type="range" id="param3" min="0" max="1" step="0.01" value="0.5">
+        </div>
+    </div>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float param1;
+            uniform float param2;
+            uniform float param3;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            mat2 rot2D(float angle) {
+                float s = sin(angle), c = cos(angle);
+                return mat2(c, -s, s, c);
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            vec3 fold(vec3 p) {
+                p.y = abs(p.y) - 1.0;
+                p.z = abs(p.z) - 1.0;
+                return p;
+            }
+
+            vec3 twist(vec3 p, float strength) {
+                float c = cos(strength * p.y);
+                float s = sin(strength * p.y);
+                mat2 m = mat2(c, -s, s, c);
+                return vec3(m * p.xz, p.y);
+            }
+
+            float sdSphere(vec3 p, float r) {
+                return length(p) - r;
+            }
+
+            float sdBox(vec3 p, vec3 b) {
+                vec3 q = abs(p) - b;
+                return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+            }
+
+            float scene(vec3 p) {
+                p = twist(p, param1);
+                p = fold(p);
+                
+                float sphere = sdSphere(p, 1.0);
+                float box = sdBox(p, vec3(0.8));
+                
+                float d = 1.0 / smin(sphere, box, sin(p.x * 10.0 + time) * sin(p.y * 10.0 + time) * sin(p.z * 10.0 + time) * 0.1 * param2);
+                
+                // Apply some distortion
+                // d += sin(p.x * 10.0 + time) * sin(p.y * 10.0 + time) * sin(p.z * 10.0 + time) * 0.1 * param2;
+                
+                return d;
+            }
+
+            vec3 getNormal(vec3 p) {
+                const vec2 e = vec2(.001, 0);
+                return normalize(vec3(
+                    scene(p + e.xyy) - scene(p - e.xyy),
+                    scene(p + e.yxy) - scene(p - e.yxy),
+                    scene(p + e.yyx) - scene(p - e.yyx)
+                ));
+            }
+
+            vec3 getRayDir(vec2 uv, vec3 p, vec3 l, float z) {
+                vec3 f = normalize(l - p),
+                     r = normalize(cross(vec3(0, 1, 0), f)),
+                     u = cross(f, r),
+                     c = f * z,
+                     i = c + uv.x * r + uv.y * u;
+                return normalize(i);
+            }
+
+            vec3 blakeColor(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.3, 0.2, 0.2);
+                return a + b * cos(6.28318 * (c * t + d + param3));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - .5 * resolution.xy) / resolution.y;
+                vec3 ro = vec3(3. * sin(time * 0.1), 2., -3. * cos(time * 0.1));
+                vec3 rd = getRayDir(uv, ro, vec3(0, 0, 0), 1.);
+
+                float d = 0., t = 0.;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * d;
+                    t = scene(p);
+                    if(abs(t) < SURF_DIST || d > MAX_DIST) break;
+                    d += t;
+                }
+
+                vec3 col = vec3(0);
+                if(d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    vec3 r = reflect(rd, n);
+
+                    float dif = dot(n, normalize(vec3(1, 2, 3))) * .5 + .5;
+                    float spec = pow(max(dot(r, normalize(vec3(1, 2, 3))), 0.0), 32.0);
+                    float fres = pow(1. + dot(rd, n), 4.);
+                    
+                    col = blakeColor(dif);
+                    col = mix(col, vec3(1), spec);
+                    col = mix(col, blakeColor(fres), .1);
+                }
+
+                col = pow(col, vec3(0.4545));  // gamma correction
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                param1: { value: 1.0 },
+                param2: { value: 1.0 },
+                param3: { value: 0.5 }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+
+        // Handle controls
+        ['param1', 'param2', 'param3'].forEach(param => {
+            document.getElementById(param).addEventListener('input', (event) => {
+                material.uniforms[param].value = parseFloat(event.target.value);
+            });
+        });
+    </script>
+</body>
+</html>
