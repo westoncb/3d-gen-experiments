@@ -176,23 +176,7 @@
                 return a + t * (b - a);
             }
 
-            vec3 zappaPalette(vec3 p) {
-                vec3 a = vec3(0.25, 0.15, 0.75);
-                vec3 b = vec3(0.35, 0.75, 0.45);
-                vec3 c = vec3(0.6, 0.42, 0.818);
-                vec3 d = vec3(0.3, 0.2, 0.2);
-                return a + b * cos(6.28318 * (c * p + d));
-            }
-
-                  vec3 zappaBlaketPalette(float t) {
-                    vec3 a = vec3(0.8, 0.5, 0.4);
-                    vec3 b = vec3(0.2, 0.4, 0.2);
-                    vec3 c = vec3(2.0, 1.0, 1.0);
-                    vec3 d = vec3(0.00, 0.25, 0.25);
-                    return a + b * cos(6.28318 * (c * t + d));
-                  }
-
-            vec3 psychedelicPalette(float t) {
+            vec3 zappaBlakePalette(float t) {
               vec3 a = vec3(0.1, 0.1, 0.1);  // Darker base
               vec3 b = vec3(0.4, 0.4, 0.4);  // Reduced color variation
               vec3 c = vec3(1.0, 0.7, 0.4);  // Warm accent
@@ -202,17 +186,6 @@
               color = pow(color, vec3(1.02, 1.01, 1.01));  // Subtle color balance adjustment
               return color;
             }
-
-            vec3 psychedelicNoirPalette(float t) {
-    vec3 a = vec3(0.1, 0.1, 0.1);  // Darker base
-    vec3 b = vec3(0.4, 0.4, 0.4);  // Reduced color variation
-    vec3 c = vec3(1.0, 0.7, 0.4);  // Warm accent
-    vec3 d = vec3(0.7, 0.2, 0.2);  // Reddish tint
-
-    vec3 color = a + b * cos(6.28318 * (c * t + d));
-    color = pow(color, vec3(1.2, 1.1, 1.0));  // Subtle color balance adjustment
-    return color;
-}
 
             void main() {
                 vec2 uv = (gl_FragCoord.xy - .5 * resolution.xy) / resolution.y;
@@ -240,17 +213,16 @@
 
                   vec3 q = mix(p, p * noise(p), symbolicComplexity / 10.);
                   float colorNoise = length(p) * (1.0 - symbolicComplexity/10.) + noise(q * symbolicComplexity + time * timeFlow * 0.05) * (symbolicComplexity/10.);
-                  vec3 baseColor = psychedelicPalette(colorNoise * symbolicComplexity + 1.);
+                  vec3 baseColor = zappaBlakePalette(colorNoise * symbolicComplexity + 1.);
                   
-                  // Blend between grayscale and psychedelic based on imaginationStrength
                   float gray = dot(baseColor, vec3(0.299, 0.587, 0.114));
                   baseColor = mix(vec3(gray), baseColor, imaginationStrength);
                   
                   col = baseColor * diff + fresnel * 0.25;
                   col += baseColor * 0.05 / (0.05 + d * d * 0.1);
 
-                  // float fogAmount = 1.0 - exp(-d * 0.15);
-                  // col = mix(col, vec3(0.5, 0.6, 0.7), fogAmount);
+                  float fogAmount = 0.5 - exp(-d * 0.15);
+                  col = mix(col, vec3(0.5, 0.6, 0.7), fogAmount);
                 } else {
                     col = vec3(0., 0., 0.);
                 }
