@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>William Blake Visionary Raymarching Shader</title>
+    <title>Blake-Zappa Shader</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -19,8 +19,8 @@
             <input type="range" id="imaginationStrength" min="0" max="3" step="0.01" value="2.9">
         </div>
         <div class="control-group">
-            <label for="dualityBalance">Duality Balance:</label>
-            <input type="range" id="dualityBalance" min="0" max="1" step="0.005" value="0.61804">
+            <label for="duality">Duality:</label>
+            <input type="range" id="duality" min="0" max="1" step="0.005" value="0">
         </div>
         <div class="control-group">
             <label for="symbolicComplexity">Symbolic Complexity:</label>
@@ -46,7 +46,7 @@
             uniform float time;
             uniform vec2 resolution;
             uniform float imaginationStrength;
-            uniform float dualityBalance;
+            uniform float duality;
             uniform float symbolicComplexity;
             uniform float timeFlow;
 
@@ -150,7 +150,7 @@
             vec3 param = wp + length(zappaFunction(wp.xz)) * 0.01;
             float tyger = sdTyger(param);
             float innocence = sdInnocence(param);
-            float blendedShape = smoothstep(tyger, innocence, dualityBalance);
+            float blendedShape = smoothstep(tyger, innocence, duality);
             float symbols = sin(p.x * symbolicComplexity) * cos(p.y * symbolicComplexity) * sin(p.z * symbolicComplexity);
             return mix(symbols, blendedShape, 0.5) / symbols * (1.0 - imaginationStrength / MAX_IMAGINATION + 0.61) / 7. + 0.03;
           }
@@ -251,7 +251,7 @@
                 time: { value: 0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
                 imaginationStrength: { value: 2.9 },
-                dualityBalance: { value: 1 / 1.618 },
+                duality: { value: 0 },
                 symbolicComplexity: { value: 0.7 },
                 timeFlow: { value: 2.0 }
             }
@@ -276,7 +276,7 @@
         });
 
         // Handle debug controls
-        ['imaginationStrength', 'dualityBalance', 'symbolicComplexity', 'timeFlow'].forEach(param => {
+        ['imaginationStrength', 'duality', 'symbolicComplexity', 'timeFlow'].forEach(param => {
             document.getElementById(param).addEventListener('input', (event) => {
                 material.uniforms[param].value = parseFloat(event.target.value);
             });
