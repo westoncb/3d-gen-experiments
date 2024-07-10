@@ -20,11 +20,11 @@
         </div>
         <div class="control-group">
             <label for="dualityBalance">Duality Balance:</label>
-            <input type="range" id="dualityBalance" min="0" max="1" step="0.01" value="0.5">
+            <input type="range" id="dualityBalance" min="0" max="1" step="0.005" value="0.5">
         </div>
         <div class="control-group">
             <label for="symbolicComplexity">Symbolic Complexity:</label>
-            <input type="range" id="symbolicComplexity" min="1" max="10" step="0.1" value="5.0">
+            <input type="range" id="symbolicComplexity" min="1" max="10" step="0.01" value="5.0">
         </div>
         <div class="control-group">
             <label for="timeFlow">Time Flow:</label>
@@ -212,16 +212,16 @@
                   float fresnel = pow(1. + dot(rd, n), imaginationStrength);
 
                   vec3 q = mix(p, p * noise(p), symbolicComplexity / 10.);
-                  float colorNoise = length(p) * (1.0 - symbolicComplexity/10.) + noise(q * symbolicComplexity + time * timeFlow * 0.05) * (symbolicComplexity/10.);
+                  float colorNoise = length(p) * (1.0 - symbolicComplexity/17.) + noise(q * symbolicComplexity + time * timeFlow * 0.05) * (symbolicComplexity/10.);
                   vec3 baseColor = zappaBlakePalette(colorNoise * symbolicComplexity + 1.);
                   
                   float gray = dot(baseColor, vec3(0.299, 0.587, 0.114));
-                  baseColor = mix(vec3(gray), baseColor, imaginationStrength);
+                  baseColor = mix(vec3(gray), baseColor, imaginationStrength * 2. + imaginationStrength);
                   
                   col = baseColor * diff + fresnel * 0.25;
                   col += baseColor * 0.05 / (0.05 + d * d * 0.1);
 
-                  float fogAmount = 0.5 - exp(-d * 0.15);
+                  float fogAmount = 0.3 - exp(-d * 0.15);
                   col = mix(col, vec3(0.5, 0.6, 0.7), fogAmount);
                 } else {
                     col = vec3(0., 0., 0.);
