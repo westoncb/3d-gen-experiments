@@ -93,15 +93,13 @@
                 vec4 q = vec4(p, time * 0.1);
                 q.xy = hRotate(q.xy, time * 0.1 + noise(q) * PI);
                 q.yz = hRotate(q.yz, time * 0.15 + noise(q * 1.5) * PI);
-                return noise(q * time * 0.2);
+                return noise(q + time * 0.2);
             }
-
-            // vec3
 
             // Distance function for ray marching
             float mapTheWorld(vec3 p) {
-                float identityValue = identityField(p/uTime, uTime);
-                float sphere = smoothstep((length(p) - mix(identityValue, 1.0, 0.5)), identityValue, 0.9);
+                float identityValue = identityField(p, uTime);
+                float sphere = length(p) - 1.0 + identityValue * 0.3;
                 return sphere;
             }
 
@@ -139,7 +137,7 @@
 
             void main() {
                 vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
-                vec3 ro = vec3(cos(uTime) * 0.25, -sin(uTime) * 0.25, -5.); // ray origin
+                vec3 ro = vec3(0, 0, -3); // ray origin
                 vec3 rd = normalize(vec3(uv.x, uv.y, 1)); // ray direction
 
                 float d = rayMarch(ro, rd);
