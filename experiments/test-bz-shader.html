@@ -1,0 +1,161 @@
+import React, {useRef, useEffect, useState} from 'react';
+
+const BZShader = () => {
+  const canvasRef = useRef(null);
+  const [u, setU] = useState({i: 2.9, d: 0, s: 0.7, f: 2});
+
+  useEffect(() => {
+    const c = canvasRef.current;
+    const gl = c.getContext('webgl');
+    const vs = 'attribute vec4 p;void main(){gl_Position=p;}';
+    const fs = `
+      precision highp float;
+      uniform float t,i,d,s,f;
+      uniform vec2 r;
+      #define MAX_STEPS 100
+      #define MAX_DIST 20.0
+      #define SURF_DIST 0.001
+      #define M3 3.0
+
+      float h(vec3 p){
+        p=fract(p*vec3(443.9,397.3,491.2));
+        p+=dot(p,p.yzx+19.19);
+        return fract(p.x*p.y*p.z);
+      }
+      float n(vec3 p){
+        vec3 i=floor(p),f=fract(p);
+        f=f*f*(3.-2.*f);
+        return mix(mix(mix(h(i),h(i+vec3(1,0,0)),f.x),
+                   mix(h(i+vec3(0,1,0)),h(i+vec3(1,1,0)),f.x),f.y),
+               mix(mix(h(i+vec3(0,0,1)),h(i+vec3(1,0,1)),f.x),
+                   mix(h(i+vec3(0,1,1)),h(i+vec3(1,1,1)),f.x),f.y),f.z);
+      }
+      mat2 R(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+      float sm(float a,float b,float k){
+        float h=clamp(.5+.5*(b-a)/k,0.,1.);
+        return mix(b,a,h)-k*h*(1.-h);
+      }
+      float sT(vec3 p){
+        p.yz*=R(sin(t*f)*.2);
+        p.xz*=R(cos(t*f*.7)*.2);
+        float b=length(p/vec3(1.2,.7,.9))-.7;
+        vec3 q=abs(p)-vec3(.8,.3,.5);
+        float st=max(q.x,max(q.y,q.z));
+        return sm(b,st,.1)*.8;
+      }
+      float sI(vec3 p){
+        p.xz*=R(t*f*.5);
+        float sp=length(p)-.8;
+        float w=sin(p.x*10.+t*f)*sin(p.y*10.+t*f)*sin(p.z*10.+t*f)*.1;
+        return sp+w;
+      }
+      float m(vec3 p){
+        float ty=sT(p);
+        float in=sI(p);
+        float bs=mix(ty,in,d);
+        float sy=sin(p.x*s)*cos(p.y*s)*sin(p.z*s);
+        return mix(sy,bs,.5)/max(sy,0.001)*(1.-i/M3+.61)/7.+.03;
+      }
+      vec3 g(vec3 p){
+        vec2 e=vec2(.001,0);
+        return normalize(vec3(m(p+e.xyy)-m(p-e.xyy),
+                              m(p+e.yxy)-m(p-e.yxy),
+                              m(p+e.yyx)-m(p-e.yyx)));
+      }
+      vec3 c(float t){
+        vec3 a=vec3(.1),b=vec3(.4),c=vec3(1.,.7,.4),d=vec3(.7,.2,.2);
+        return pow(a+b*cos(6.28318*(c*t+d)),vec3(1.02,1.01,1.01));
+      }
+      void main(){
+        vec2 uv=(gl_FragCoord.xy-.5*r)/r.y;
+        vec3 ro=vec3(3.*sin(t*f*.1),2.,-3.*cos(t*f*.1));
+        vec3 rd=normalize(vec3(uv,1));
+        float d=0.;
+        for(int j=0;j<MAX_STEPS;j++){
+          vec3 p=ro+rd*d;
+          float h=m(p);
+          if(abs(h)<SURF_DIST||d>MAX_DIST) break;
+          d+=h;
+        }
+        vec3 col=vec3(0);
+        if(d<MAX_DIST){
+          vec3 p=ro+rd*d;
+          vec3 n=g(p);
+          float diff=dot(n,normalize(vec3(1,2,3)))*.5+.5;
+          float fr=pow(1.+dot(rd,n),i);
+          vec3 q=mix(p,p*n(p),s/10.);
+          float cn=length(p)*(1.-s/10.)+n(q*s+t*f*.05)*(s/10.);
+          vec3 bc=c(cn*s+1.);
+          float gray=dot(bc,vec3(.299,.587,.114));
+          bc=mix(vec3(gray),bc,i*2.+i);
+          col=bc*diff+fr*.25;
+          col+=bc*.05/(.05+d*d*.1);
+          float fa=.3-exp(-d*.15);
+          col=mix(col,vec3(.5,.6,.7),fa);
+        }
+        gl_FragColor=vec4(pow(col,vec3(.4545)),1);
+      }
+    `;
+    const p = gl.createProgram();
+    [vs, fs].forEach((s, j) => {
+      const h = gl.createShader(j ? gl.FRAGMENT_SHADER : gl.VERTEX_SHADER);
+      gl.shaderSource(h, s);
+      gl.compileShader(h);
+      gl.attachShader(p, h);
+    });
+    gl.linkProgram(p);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    const l = n => gl.getUniformLocation(p, n);
+    const U = {t:l('t'),r:l('r'),i:l('i'),d:l('d'),s:l('s'),f:l('f')};
+    let S = performance.now();
+    const draw = () => {
+      const T = (performance.now() - S) * 5e-4;
+      gl.viewport(0, 0, c.width, c.height);
+      gl.useProgram(p);
+      gl.uniform1f(U.t, T);
+      gl.uniform2f(U.r, c.width, c.height);
+      Object.entries(u).forEach(([k,v]) => gl.uniform1f(U[k], v));
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      requestAnimationFrame(draw);
+    };
+    const resize = () => {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+    return () => window.removeEventListener('resize', resize);
+  }, [u]);
+
+  return (
+    <>
+      <canvas ref={canvasRef} style={{width:'100%',height:'100%'}}/>
+      <div style={{position:'absolute',top:10,left:10,color:'white',fontFamily:'monospace'}}>
+        {[
+          {id:'i',label:'Imagination Strength',min:0,max:3,step:0.01,def:2.9},
+          {id:'d',label:'Duality',min:0,max:1,step:0.005,def:0},
+          {id:'s',label:'Symbolic Complexity',min:0.1,max:10,step:0.1,def:0.7},
+          {id:'f',label:'Time Flow',min:0.01,max:4,step:0.005,def:2}
+        ].map(({id,label,min,max,step,def}) => (
+          <div key={id} style={{marginBottom:5}}>
+            <label style={{display:'inline-block',width:200}}>{label}:</label>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={u[id]}
+              onChange={e => setU({...u,[id]:parseFloat(e.target.value)})}
+            />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+};
+
+export default BZShader;

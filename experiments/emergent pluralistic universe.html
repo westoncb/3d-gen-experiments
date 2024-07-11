@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corrected Emergent Pluralistic Universe Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const vertexShaderSource = `
+            attribute vec4 aVertexPosition;
+            varying vec2 vUv;
+            void main() {
+                gl_Position = aVertexPosition;
+                vUv = aVertexPosition.xy * 0.5 + 0.5;
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+
+            #define PI 3.14159265359
+
+            // Hash function
+            float hash(float n) {
+                return fract(sin(n) * 43758.5453);
+            }
+
+            // 5D rotation matrix (simplified for 2D input)
+            mat2 rotate5D(float angle) {
+                float c = cos(angle);
+                float s = sin(angle);
+                return mat2(c, -s, s, c);
+            }
+
+            // Complex exponential
+            vec2 cExp(vec2 z) {
+                return exp(z.x) * vec2(cos(z.y), sin(z.y));
+            }
+
+            // Higher-dimensional noise
+            float noise(vec3 x) {
+                vec3 p = floor(x);
+                vec3 f = fract(x);
+                f = f * f * (3.0 - 2.0 * f);
+                float n = p.x + p.y * 157.0 + 113.0 * p.z;
+                return mix(
+                    mix(
+                        mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                        mix(hash(n + 157.0), hash(n + 158.0), f.x),
+                        f.y),
+                    mix(
+                        mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                        mix(hash(n + 270.0), hash(n + 271.0), f.x),
+                        f.y),
+                    f.z);
+            }
+
+            void main() {
+                vec2 uv = (vUv - 0.5) * 2.0;
+                uv.x *= uResolution.x / uResolution.y;
+
+                float time = uTime * 0.1;
+
+                // Create a higher-dimensional point
+                vec4 p = vec4(uv, sin(time * 0.7), cos(time * 0.8));
+
+                // Apply 5D rotations
+                p.xy = rotate5D(time * 0.3) * p.xy;
+                p.xz = rotate5D(time * 0.4) * p.xz;
+                p.yz = rotate5D(time * 0.5) * p.yz;
+
+                // Non-linear transformation
+                vec2 z = cExp(p.xy);
+                z += p.zw;
+
+                // Create interference patterns
+                float pattern = 0.0;
+                for (int i = 1; i <= 5; i++) {
+                    float fi = float(i);
+                    vec3 q = vec3(z * fi, time * 0.2 * fi);
+                    pattern += noise(q) / fi;
+                }
+
+                // Color based on the interference pattern
+                vec3 col = vec3(pattern * 0.5 + 0.5);
+
+                // Add some depth and variation
+                col *= 0.8 + 0.2 * cos(vec3(0.0, 1.0, 2.0) + length(p) - time);
+
+                // Vignette effect
+                col *= 1.0 - 0.5 * length(uv);
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        let gl, program, timeUniformLocation, resolutionUniformLocation;
+
+        function initGL() {
+            const canvas = document.getElementById('glCanvas');
+            gl = canvas.getContext('webgl');
+            if (!gl) {
+                console.error('WebGL not supported');
+                return;
+            }
+
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+            program = createProgram(gl, vertexShader, fragmentShader);
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+            const positionAttributeLocation = gl.getAttribLocation(program, 'aVertexPosition');
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            timeUniformLocation = gl.getUniformLocation(program, 'uTime');
+            resolutionUniformLocation = gl.getUniformLocation(program, 'uResolution');
+
+            gl.useProgram(program);
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function createProgram(gl, vertexShader, fragmentShader) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program link error:', gl.getProgramInfoLog(program));
+                return null;
+            }
+            return program;
+        }
+
+        function render(time) {
+            gl.uniform1f(timeUniformLocation, time * 0.001);
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        function onResize() {
+            gl.canvas.width = window.innerWidth;
+            gl.canvas.height = window.innerHeight;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        }
+
+        initGL();
+        onResize();
+        window.addEventListener('resize', onResize);
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

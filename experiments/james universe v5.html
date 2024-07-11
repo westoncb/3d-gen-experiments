@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>William James' Multi-Realm Pluralistic Universe</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #controls { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial, sans-serif; }
+        .slider-container { margin-bottom: 10px; }
+        .slider-label { display: inline-block; width: 200px; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <div id="controls">
+        <div class="slider-container">
+            <span class="slider-label">Realm Blending:</span>
+            <input type="range" id="realmBlendingSlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="slider-container">
+            <span class="slider-label">Complexity:</span>
+            <input type="range" id="complexitySlider" min="1" max="10" step="0.1" value="5">
+        </div>
+        <div class="slider-container">
+            <span class="slider-label">Interconnectedness:</span>
+            <input type="range" id="interconnectednessSlider" min="0" max="1" step="0.01" value="0.5">
+        </div>
+        <div class="slider-container">
+            <span class="slider-label">Temporal Flow:</span>
+            <input type="range" id="temporalFlowSlider" min="0" max="2" step="0.01" value="1">
+        </div>
+    </div>
+    <script>
+        const vertexShaderSource = `
+            attribute vec4 aVertexPosition;
+            varying vec2 vUv;
+            void main() {
+                gl_Position = aVertexPosition;
+                vUv = aVertexPosition.xy * 0.5 + 0.5;
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform float uRealmBlending;
+            uniform float uComplexity;
+            uniform float uInterconnectedness;
+            uniform float uTemporalFlow;
+            varying vec2 vUv;
+
+            #define PI 3.14159265359
+            #define NUM_REALMS 4
+
+            // Complex number operations
+            vec2 cMul(vec2 a, vec2 b) {
+                return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+            }
+
+            vec2 cDiv(vec2 a, vec2 b) {
+                float denom = dot(b, b);
+                return vec2(dot(a, b), a.y * b.x - a.x * b.y) / (denom + 1e-10);
+            }
+
+            vec2 cExp(vec2 z) {
+                return exp(z.x) * vec2(cos(z.y), sin(z.y));
+            }
+
+            // Möbius transformation
+            vec2 mobius(vec2 z, vec2 a, vec2 b, vec2 c, vec2 d) {
+                vec2 num = cMul(a, z) + b;
+                vec2 den = cMul(c, z) + d;
+                return cDiv(num, den);
+            }
+
+            // 3D to 2D mapping
+            vec2 stereographicProjection(vec3 p) {
+                return vec2(p.x / (1.0 - p.z), p.y / (1.0 - p.z));
+            }
+
+            // Inverse stereographic projection
+            vec3 inverseStereographicProjection(vec2 p) {
+                float x = 2.0 * p.x / (1.0 + dot(p, p));
+                float y = 2.0 * p.y / (1.0 + dot(p, p));
+                float z = (-1.0 + dot(p, p)) / (1.0 + dot(p, p));
+                return vec3(x, y, z);
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // Realm-specific functions
+            float realmFunction(vec3 p, int realmIndex) {
+                float result = 0.0;
+                if (realmIndex == 0) {
+                    // Hyperbolic-like realm
+                    vec2 z = stereographicProjection(p);
+                    z = mobius(z, vec2(cos(uTime * 0.1), sin(uTime * 0.1)), vec2(0.0), vec2(0.0), vec2(1.0));
+                    result = length(z) - 0.5;
+                } else if (realmIndex == 1) {
+                    // Fractal-like realm
+                    for (int i = 0; i < 8; i++) {
+                        p = abs(p) / dot(p,p) - 0.5;
+                    }
+                    result = length(p) - 0.3;
+                } else if (realmIndex == 2) {
+                    // Toroidal realm
+                    float r1 = 0.5;
+                    float r2 = 0.1;
+                    vec2 q = vec2(length(p.xy) - r1, p.z);
+                    result = length(q) - r2;
+                } else {
+                    // Spherical harmonic realm
+                    float r = length(p);
+                    float theta = acos(p.z / r);
+                    float phi = atan(p.y, p.x);
+                    result = r - (0.5 + 0.1 * (sin(3.0 * theta) * cos(5.0 * phi)));
+                }
+                return result;
+            }
+
+            // Multi-realm SDF
+            float multiRealmSDF(vec3 p) {
+                float d = 1e10;
+                for (int i = 0; i < NUM_REALMS; i++) {
+                    float realmDist = realmFunction(p, i);
+                    d = smoothstep(d, realmDist, 0.618);
+                }
+                return d;
+            }
+
+            // Experience node function
+            float experienceNode(vec3 p, float seed) {
+                vec3 nodePos = vec3(
+                    sin(seed * 111.1),
+                    sin(seed * 222.2),
+                    sin(seed * 333.3)
+                ) * 0.5;
+                return length(p - nodePos) - 0.05;
+            }
+
+            // Philosophical color palette
+            vec3 philosophicalPalette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.3, 0.2, 0.2);
+                return a + b * cos(2.0 * PI * (c * t + d + vec3(uRealmBlending, uInterconnectedness, uComplexity * 0.1)));
+            }
+
+            // Ray marching function
+            float rayMarch(vec3 ro, vec3 rd) {
+                float t = 0.0;
+                for (int i = 0; i < 100; i++) {
+                    vec3 p = ro + rd * t;
+                    float d = multiRealmSDF(p);
+                    if (d < 0.001) break;
+                    t += d * 0.5;
+                    if (t > 20.0) break;
+                }
+                return t;
+            }
+
+            // Normal calculation
+            vec3 calcNormal(vec3 p) {
+                vec2 e = vec2(0.001, 0.0);
+                return normalize(vec3(
+                    multiRealmSDF(p + e.xyy) - multiRealmSDF(p - e.xyy),
+                    multiRealmSDF(p + e.yxy) - multiRealmSDF(p - e.yxy),
+                    multiRealmSDF(p + e.yyx) - multiRealmSDF(p - e.yyx)
+                ));
+            }
+
+            void main() {
+                vec2 uv = vUv * 2.0 - 1.0;
+                uv *= uResolution.xy / min(uResolution.x, uResolution.y);
+
+                // Camera setup
+                vec3 ro = vec3(0.0, 0.0, -3.0);
+                vec3 rd = normalize(vec3(uv, 1.0));
+
+                // Ray marching
+                float t = rayMarch(ro, rd);
+                vec3 p = ro + rd * t;
+
+                // Coloring
+                vec3 col = vec3(0.0);
+                if (t < 20.0) {
+                    vec3 n = calcNormal(p);
+                    float diff = max(dot(n, normalize(vec3(1.0, 1.0, 1.0))), 0.0);
+
+                    col = philosophicalPalette(length(p) * 0.1 + uTime * 0.05);
+                    col *= diff;
+
+                    // Add experience nodes
+                    for (int i = 0; i < 10; i++) {
+                        float nodeDist = experienceNode(p, float(i));
+                        if (nodeDist < 0.01) {
+                            col += vec3(1.0, 0.5, 0.2) * (1.0 - nodeDist * 100.0) * uInterconnectedness;
+                        }
+                    }
+
+                    // Add realm blending effect
+                    col = mix(col, 1.0 - col, sin(length(p) * 10.0 - uTime * uTemporalFlow) * 0.5 * uRealmBlending);
+                }
+
+                // Output to screen
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        let gl;
+        let program;
+        let positionBuffer;
+        let timeUniformLocation;
+        let resolutionUniformLocation;
+        let realmBlendingUniformLocation;
+        let complexityUniformLocation;
+        let interconnectednessUniformLocation;
+        let temporalFlowUniformLocation;
+
+        function initGL() {
+            const canvas = document.getElementById('glCanvas');
+            gl = canvas.getContext('webgl');
+
+            if (!gl) {
+                console.error('Unable to initialize WebGL. Your browser may not support it.');
+                return;
+            }
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+            program = createProgram(gl, vertexShader, fragmentShader);
+
+            positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            const positions = [
+                -1.0, -1.0,
+                 1.0, -1.0,
+                -1.0,  1.0,
+                 1.0,  1.0,
+            ];
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+            const positionAttributeLocation = gl.getAttribLocation(program, 'aVertexPosition');
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            timeUniformLocation = gl.getUniformLocation(program, 'uTime');
+            resolutionUniformLocation = gl.getUniformLocation(program, 'uResolution');
+            realmBlendingUniformLocation = gl.getUniformLocation(program, 'uRealmBlending');
+            complexityUniformLocation = gl.getUniformLocation(program, 'uComplexity');
+            interconnectednessUniformLocation = gl.getUniformLocation(program, 'uInterconnectedness');
+            temporalFlowUniformLocation = gl.getUniformLocation(program, 'uTemporalFlow');
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+
+            return shader;
+        }
+
+        function createProgram(gl, vertexShader, fragmentShader) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+                return null;
+            }
+
+            return program;
+        }
+
+        function render(time) {
+            gl.useProgram(program);
+
+            gl.uniform1f(timeUniformLocation, time * 0.001);
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(realmBlendingUniformLocation, parseFloat(document.getElementById('realmBlendingSlider').value));
+            gl.uniform1f(complexityUniformLocation, parseFloat(document.getElementById('complexitySlider').value));
+            gl.uniform1f(interconnectednessUniformLocation, parseFloat(document.getElementById('interconnectednessSlider').value));
+            gl.uniform1f(temporalFlowUniformLocation, parseFloat(document.getElementById('temporalFlowSlider').value));
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            requestAnimationFrame(render);
+        }
+
+        initGL();
+        requestAnimationFrame(render);
+
+        window.addEventListener('resize', () => {
+            gl.canvas.width = window.innerWidth;
+            gl.canvas.height = window.innerHeight;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        });
+    </script>
+</body>
+</html>_
