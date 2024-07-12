@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A World of Pure Experience Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const vertexShaderSource = `
+            attribute vec4 aVertexPosition;
+            varying vec2 vUv;
+            void main() {
+                gl_Position = aVertexPosition;
+                vUv = aVertexPosition.xy * 0.5 + 0.5;
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+            #define PI 3.14159265359
+
+            float acosh(float x) {
+                return log(x + sqrt(x * x - 1.0));
+            }
+
+            // 4D rotation matrices
+            mat4 rotateXY(float theta) {
+                float c = cos(theta), s = sin(theta);
+                return mat4(c,-s,0,0, s,c,0,0, 0,0,1,0, 0,0,0,1);
+            }
+
+            mat4 rotateXZ(float theta) {
+                float c = cos(theta), s = sin(theta);
+                return mat4(c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1);
+            }
+
+            mat4 rotateXW(float theta) {
+                float c = cos(theta), s = sin(theta);
+                return mat4(c,0,0,-s, 0,1,0,0, 0,0,1,0, s,0,0,c);
+            }
+
+            // 4D noise function
+            float noise4D(vec4 p) {
+                vec4 i = floor(p);
+                vec4 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                
+                float n = dot(i, vec4(1.0, 157.0, 113.0, 271.0));
+                vec4 v1 = n + vec4(0.0, 157.0, 113.0, 271.0);
+                vec4 v2 = n + vec4(1.0, 158.0, 114.0, 272.0);
+                
+                vec4 ff = f * f;
+                vec4 w = ff * (3.0 - 2.0 * f);
+                
+                return mix(
+                    mix(mix(mix(fract(sin(v1.x)*43758.5453), fract(sin(v1.y)*43758.5453), w.x),
+                            mix(fract(sin(v1.z)*43758.5453), fract(sin(v1.w)*43758.5453), w.x), w.y),
+                        mix(mix(fract(sin(v2.x)*43758.5453), fract(sin(v2.y)*43758.5453), w.x),
+                            mix(fract(sin(v2.z)*43758.5453), fract(sin(v2.w)*43758.5453), w.x), w.y), w.z),
+                    mix(mix(mix(fract(sin(v1.x+1.0)*43758.5453), fract(sin(v1.y+1.0)*43758.5453), w.x),
+                            mix(fract(sin(v1.z+1.0)*43758.5453), fract(sin(v1.w+1.0)*43758.5453), w.x), w.y),
+                        mix(mix(fract(sin(v2.x+1.0)*43758.5453), fract(sin(v2.y+1.0)*43758.5453), w.x),
+                            mix(fract(sin(v2.z+1.0)*43758.5453), fract(sin(v2.w+1.0)*43758.5453), w.x), w.y), w.z),
+                    w.w);
+            }
+
+            // Hyperbolic distance function
+            float hyperbolicDist(vec3 p, vec3 q) {
+                return acosh(max(1.0, dot(p, q)));
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // Signed Distance Function for our 4D hyperbolic space
+            float sceneSDF(vec3 p) {
+                vec4 p4 = vec4(p, 1.0);
+                
+                // Apply 4D rotations to create a sense of continuous flow
+                p4 = rotateXY(uTime * 0.1) * rotateXZ(uTime * 0.15) * rotateXW(uTime * 0.2) * p4;
+                
+                // Project back to 3D
+                vec3 p3 = p4.xyz / p4.w;
+                
+                // Create a base shape representing "pure experience"
+                float d = length(p3) - 1.0;
+                
+                // Add hyperbolic distortion to represent non-Euclidean nature of experience
+                float hypDist = hyperbolicDist(normalize(p3), vec3(1.0, 0.0, 0.0));
+                d += 0.1 * sin(5.0 * hypDist - uTime);
+                
+                // Add 4D noise distortion to represent the complexity and richness of experience
+                float noise = noise4D(vec4(p3 * 2.0, uTime * 0.1));
+                d += 0.2 * noise;
+                
+                // Create multiple interconnected spheres to represent different "streams of experience"
+                for (int i = 0; i < 5; i++) {
+                    vec3 offset = 2.0 * vec3(
+                        sin(float(i) * 2.0 + uTime),
+                        cos(float(i) * 3.0 + uTime),
+                        sin(float(i) * 4.0 + uTime)
+                    );
+                    float sphereDist = length(p3 - offset) - 0.5;
+                    
+                    // Use smooth min for "conjunctive" relations
+                    float k = 0.2;
+                    float h = clamp(0.5 + 0.5 * (sphereDist - d) / k, 0.0, 1.0);
+                    d = mix(sphereDist, d, h) - k * h * (1.0 - h);
+                }
+                
+                return d;
+            }
+
+            // Calculate the normal at a point
+            vec3 calcNormal(vec3 p) {
+                const vec2 e = vec2(0.001, 0);
+                return normalize(vec3(
+                    sceneSDF(p + e.xyy) - sceneSDF(p - e.xyy),
+                    sceneSDF(p + e.yxy) - sceneSDF(p - e.yxy),
+                    sceneSDF(p + e.yyx) - sceneSDF(p - e.yyx)
+                ));
+            }
+
+            // Raymarching function
+            float raymarch(vec3 ro, vec3 rd) {
+                float dO = 0.0;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = sceneSDF(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+                return dO;
+            }
+
+            // Main function
+            void main() {
+                vec2 uv = (vUv - 0.5) * uResolution / uResolution.y;
+                
+                // Camera setup
+                vec3 ro = vec3(0, 0, -3);
+                vec3 rd = normalize(vec3(uv, 1));
+                
+                float d = raymarch(ro, rd);
+                vec3 p = ro + rd * d;
+                
+                vec3 col = vec3(0);
+                
+                if(d < MAX_DIST) {
+                    vec3 n = calcNormal(p);
+                    vec3 lightPos = vec3(2, 3, -4);
+                    vec3 l = normalize(lightPos - p);
+                    
+                    float diff = max(dot(n, l), 0.0);
+                    float spec = pow(max(dot(reflect(-l, n), -rd), 0.0), 32.0);
+                    
+                    // Color based on 4D position and normal
+                    vec4 p4 = vec4(p, 1.0);
+                    p4 = rotateXW(uTime * 0.1) * p4;
+                    col = 0.5 + 0.5 * cos(vec3(0, 2, 4) + length(p4) - uTime);
+                    col *= diff * 0.8 + 0.2;
+                    col += spec * 0.5;
+                    
+                    // Add "mosaic" effect
+                    float mosaicPattern = fract(dot(floor(p * 10.0), vec3(1.0)));
+                    col *= 0.8 + 0.2 * step(0.5, mosaicPattern);
+                    
+                    // Add hyperbolic patterns to represent the flow of experience
+                    float hypPattern = sin(5.0 * hyperbolicDist(normalize(p), vec3(0.0)) - uTime);
+                    col *= 1.0 + 0.2 * hypPattern;
+                }
+                
+                // Fog effect to represent the "fringe" of experience
+                col = mix(col, vec3(0.1, 0.2, 0.3), 1.0 - exp(-0.01 * d * d));
+                
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        let gl, program, timeUniformLocation, resolutionUniformLocation;
+
+        function initGL() {
+            const canvas = document.getElementById('glCanvas');
+            gl = canvas.getContext('webgl');
+            if (!gl) {
+                console.error('WebGL not supported');
+                return;
+            }
+
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+            program = createProgram(gl, vertexShader, fragmentShader);
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+            const positionAttributeLocation = gl.getAttribLocation(program, 'aVertexPosition');
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            timeUniformLocation = gl.getUniformLocation(program, 'uTime');
+            resolutionUniformLocation = gl.getUniformLocation(program, 'uResolution');
+
+            gl.useProgram(program);
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function createProgram(gl, vertexShader, fragmentShader) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program link error:', gl.getProgramInfoLog(program));
+                return null;
+            }
+            return program;
+        }
+
+        function render(time) {
+            gl.uniform1f(timeUniformLocation, time * 0.001);
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        function onResize() {
+            gl.canvas.width = window.innerWidth;
+            gl.canvas.height = window.innerHeight;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        }
+
+        initGL();
+        onResize();
+        window.addEventListener('resize', onResize);
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A World of Pure Experience Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        const vertexShaderSource = `
+            attribute vec4 aVertexPosition;
+            varying vec2 vUv;
+            void main() {
+                gl_Position = aVertexPosition;
+                vUv = aVertexPosition.xy * 0.5 + 0.5;
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 1000.0
+            #define SURF_DIST 0.001
+            #define PI 3.14159265359
+
+            float acosh(float x) {
+                return log(x + sqrt(x * x - 1.0));
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // 6D vector representation
+            struct vec6 {
+                vec3 xyz;
+                vec3 uvw;
+            };
+
+            // Complex number operations
+            vec2 cMul(vec2 a, vec2 b) {
+                return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+            }
+
+            vec2 cExp(vec2 z) {
+                return exp(z.x) * vec2(cos(z.y), sin(z.y));
+            }
+
+            // 6D rotation functions
+            vec6 rotate6D(vec6 p, float theta1, float theta2, float theta3) {
+                float c1 = cos(theta1), s1 = sin(theta1);
+                float c2 = cos(theta2), s2 = sin(theta2);
+                float c3 = cos(theta3), s3 = sin(theta3);
+                
+                vec6 q;
+                q.xyz = vec3(
+                    c1 * p.xyz.x - s1 * p.xyz.y,
+                    s1 * p.xyz.x + c1 * p.xyz.y,
+                    p.xyz.z
+                );
+                q.uvw = vec3(
+                    c2 * p.uvw.x - s2 * p.uvw.y,
+                    s2 * p.uvw.x + c2 * p.uvw.y,
+                    c3 * p.uvw.z - s3 * p.xyz.z
+                );
+                q.xyz.z = s3 * p.uvw.z + c3 * q.xyz.z;
+                return q;
+            }
+
+            // Hyperbolic distance function
+            float hyperbolicDist(vec6 p, vec6 q) {
+                float dot_p = dot(p.xyz, p.xyz) - dot(p.uvw, p.uvw);
+                float dot_q = dot(q.xyz, q.xyz) - dot(q.uvw, q.uvw);
+                float dot_pq = dot(p.xyz, q.xyz) - dot(p.uvw, q.uvw);
+                return acosh(abs(1.0 + 2.0 * dot_pq / ((1.0 - dot_p) * (1.0 - dot_q))));
+            }
+
+            // Noise function for 6D space
+            float noise6D(vec6 p) {
+                vec3 n1 = sin(p.xyz * 1.23 + p.uvw * 0.45);
+                vec3 n2 = sin(p.uvw * 0.78 - p.xyz * 1.65);
+                return dot(n1, n2) * 0.5 + 0.5;
+            }
+
+            // Experience field function
+            float experienceField(vec6 p) {
+                p = rotate6D(p, uTime * 0.1, uTime * 0.2, uTime * 0.15);
+                
+                float shape = length(p.xyz) - 1.0 + 0.1 * sin(10.0 * p.uvw.x + uTime);
+                shape += 0.1 * noise6D(p);
+                
+                float streams = 0.0;
+                for (int i = 0; i < 5; i++) {
+                    vec6 q = p;
+                    q.xyz += sin(q.uvw * float(i) * 0.5 + uTime);
+                    streams += 0.1 / (0.1 + abs(length(q.xyz) - 1.0));
+                }
+                
+                float hypDist = hyperbolicDist(p, vec6(vec3(0.0, 0.0, 1.), vec3(streams * 0.001)));
+                float waves = 0.1 * sin(5.0 * hypDist - uTime);
+                
+
+                // hot glue psychedelia
+                return smin(shape, (streams - waves), (waves - streams) * 1.618);
+
+                // organismic tunnel
+                // return smin(shape, (streams + waves), (waves + streams) * 1.618);
+
+                // umm?
+                // return smin(shape, (streams / waves), (waves / streams) * 1.618);
+
+                // demonic whirlwhind
+                // return smin(shape, (streams * waves), (waves / streams));
+
+                // muted strange blossom
+                // return smoothstep(shape, (streams + waves), (waves + streams) / 1.618);
+
+                // chub
+                // return smoothstep(shape, (streams - waves), (waves + streams) / 5.);
+
+                // p good twisty ball
+                // return shape + waves;
+
+                // scary moth
+                // return (shape + waves + streams) / 10.;
+
+                // mobius caterpillar
+                // return (shape + waves + streams) / 32.;
+
+                // maybe better caterpillar?
+                // return shape * (waves + streams) / 24.;
+
+                // wicked spiny sphere
+                // return shape + (waves * streams);
+
+                // return shape * (streams - waves);
+                // return smin(shape, waves, hypDist * 10.);
+                // return smoothstep(shape, (streams / waves), (waves * streams) * 5.);
+                // return smin(shape, (streams + waves), (waves + streams));
+            }
+
+            // Ray marching function
+            vec3 raymarch(vec6 ro, vec6 rd) {
+                float dO = 0.0;
+                for (int i = 0; i < MAX_STEPS; i++) {
+                    vec6 p = vec6(ro.xyz + rd.xyz * dO, ro.uvw + rd.uvw * dO);
+                    float dS = experienceField(p);
+                    dO += dS;
+                    if (dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+                return vec3(dO);
+            }
+
+            // Normal calculation
+            vec3 calcNormal(vec6 p) {
+                float d = experienceField(p);
+                vec2 e = vec2(0.001, 0.0);
+                vec3 n = d - vec3(
+                    experienceField(vec6(p.xyz - e.xyy, p.uvw)),
+                    experienceField(vec6(p.xyz - e.yxy, p.uvw)),
+                    experienceField(vec6(p.xyz - e.yyx, p.uvw))
+                );
+                return normalize(n);
+            }
+
+            // Main function
+            void main() {
+                vec2 uv = (vUv - 0.5) * uResolution / uResolution.y;
+                
+                // Set up 6D camera
+                vec6 ro = vec6(vec3(0.0, 0.0, -3.0), vec3(sin(uTime * 0.1), cos(uTime * 0.1), 0.0));
+                vec6 rd = vec6(normalize(vec3(uv, 1.0)), vec3(0.0, 0.0, 0.0));
+                
+                vec3 col = raymarch(ro, rd);
+                
+                if (col.x < MAX_DIST) {
+                    vec6 p = vec6(ro.xyz + rd.xyz * col.x, ro.uvw + rd.uvw * col.x);
+                    vec3 n = calcNormal(p);
+                    
+                    // Basic lighting
+                    vec3 light = normalize(vec3(1.0, 1.0, -1.0));
+                    float diff = max(dot(n, light), 0.0);
+                    float spec = pow(max(dot(reflect(-light, n), -rd.xyz), 0.0), 32.0);
+                    
+                    // Color based on 6D position and normal
+                    vec3 baseColor = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + length(p.xyz) * 0.2 - uTime * 0.1);
+                    col = baseColor * (diff * 0.8 + 0.2) + spec * 0.2;
+                    
+                    // Add some "streams of experience" effect
+                    float streams = 0.0;
+                    for (int i = 0; i < 3; i++) {
+                        streams += 0.1 * sin(dot(p.uvw, vec3(1.0, 2.0, 3.0)) * float(i) - uTime);
+                    }
+                    col += vec3(0.1, 0.2, 0.3) * streams;
+                    
+                    // Fade out based on distance
+                    col *= 1.0 - smoothstep(0.0, MAX_DIST, col.x);
+                } else {
+                    col = vec3(0.1, 0.2, 0.3); // Background color
+                }
+                
+                // Gamma correction
+                col = pow(col, vec3(0.4545));
+                
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        let gl, program, timeUniformLocation, resolutionUniformLocation;
+
+        function initGL() {
+            const canvas = document.getElementById('glCanvas');
+            gl = canvas.getContext('webgl');
+            if (!gl) {
+                console.error('WebGL not supported');
+                return;
+            }
+
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+            program = createProgram(gl, vertexShader, fragmentShader);
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+            const positionAttributeLocation = gl.getAttribLocation(program, 'aVertexPosition');
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            timeUniformLocation = gl.getUniformLocation(program, 'uTime');
+            resolutionUniformLocation = gl.getUniformLocation(program, 'uResolution');
+
+            gl.useProgram(program);
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function createProgram(gl, vertexShader, fragmentShader) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program link error:', gl.getProgramInfoLog(program));
+                return null;
+            }
+            return program;
+        }
+
+        function render(time) {
+            gl.uniform1f(timeUniformLocation, time * 0.0002);
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        function onResize() {
+            gl.canvas.width = window.innerWidth;
+            gl.canvas.height = window.innerHeight;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        }
+
+        initGL();
+        onResize();
+        window.addEventListener('resize', onResize);
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
