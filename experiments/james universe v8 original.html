@@ -52,11 +52,6 @@
                 return cDiv(num, den);
             }
 
-            float smin(float a, float b, float k) {
-                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-                return mix(b, a, h) - k * h * (1.0 - h);
-            }
-
             float realmFunction(vec3 p, int realmIndex) {
                 float result = 0.0;
                 if (realmIndex == 0) {
@@ -89,9 +84,8 @@
                 float d = 1e10;
                 for (int i = 0; i < NUM_REALMS; i++) {
                     float realmDist = realmFunction(p, i);
-                    d = smin(d, realmDist, interconnectedness);
+                    d = smoothstep(d, realmDist, interconnectedness);
                 }
-
                 return d * (1.0 - abstractness * 0.5);
             }
 
