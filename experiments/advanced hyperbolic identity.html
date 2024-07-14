@@ -98,12 +98,13 @@
 
             // Main distance function
             float sceneSDF(vec3 p) {
-                vec2 z = kleinToPoincare(p.xy);
+                vec2 z = p.xy;
                 float w = cos(uTime * 0.2);
                 float u = sin(uTime * 0.3);
                 float d1 = identityField(p, w, u, uTime);
-                float d2 = identityField(vec3(z, length(z)), w + 1.0, u + 1.0, uTime);
-                return (mix(d1, d2, 1. + (w / u) * sin(uTime * 0.5)) + 1.) * 0.072;
+                float d2 = identityField(vec3(poincareToKlein(z), length(poincareToKlein(z))), w + 1.0, u + 1.0, uTime);
+                return length(vec2(d1, d2)) * .618;
+                // return (mix(d1, d2, 1.5 + (w / u) * sin(uTime * 0.5)) + 1.) * 0.072;
             }
 
             // Ray marching
