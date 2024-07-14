@@ -102,19 +102,11 @@
                 float w = cos(uTime * 0.2);
                 float u = sin(uTime * 0.3);
                 float d1 = identityField(p, w, u, uTime);
-                
-                // poincare
-                // float d2 = identityField(vec3(kleinToPoincare(z), length(kleinToPoincare(z))), w + 1.0, u + 1.0, uTime);
+                float d2 = identityField(vec3(poincareToKlein(z), length(poincareToKlein(z))), w + 1.0, u + 1.0, uTime * 1.1);
 
-                // klein
-                float d2 = identityField(vec3(poincareToKlein(z), length(poincareToKlein(z))), w + 1.0, u + 1.0, uTime);
+                // return length(vec2(d1, d2)) * 0.03;
 
-                // euclid
-                // float d2 = identityField(vec3(z), length(z))), w + 1.0, u + 1.0, uTime);
-                
-                // return length(vec2(d1, d2)) * (1. / 1.618) * 1.;
-                
-                return (mix(d1, d2, 1.5 + (w / u) * sin(uTime * 0.5)) + 1.) * 0.072;
+                return (mix(d1, d2, .0 + .5 * sin(uTime * 0.5)) - .0) * 1.;
             }
 
             // Ray marching
