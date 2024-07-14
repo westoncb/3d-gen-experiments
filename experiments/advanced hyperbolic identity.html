@@ -93,7 +93,7 @@
                 vec3 b = vec3(0.5, 0.5, 0.5);
                 vec3 c = vec3(1.0, 1.0, 1.0);
                 vec3 d = vec3(0.263, 0.416, 0.557);
-                return a + b * cos(6.28318 * (c * t + d + time * 0.1));
+                return a + b * cos(6.28318 * (c * t + d + time * .1));
             }
 
             // Main distance function
@@ -102,9 +102,19 @@
                 float w = cos(uTime * 0.2);
                 float u = sin(uTime * 0.3);
                 float d1 = identityField(p, w, u, uTime);
+                
+                // poincare
+                // float d2 = identityField(vec3(kleinToPoincare(z), length(kleinToPoincare(z))), w + 1.0, u + 1.0, uTime);
+
+                // klein
                 float d2 = identityField(vec3(poincareToKlein(z), length(poincareToKlein(z))), w + 1.0, u + 1.0, uTime);
-                return length(vec2(d1, d2)) * .618;
-                // return (mix(d1, d2, 1.5 + (w / u) * sin(uTime * 0.5)) + 1.) * 0.072;
+
+                // euclid
+                // float d2 = identityField(vec3(z), length(z))), w + 1.0, u + 1.0, uTime);
+                
+                // return length(vec2(d1, d2)) * (1. / 1.618) * 1.;
+                
+                return (mix(d1, d2, 1.5 + (w / u) * sin(uTime * 0.5)) + 1.) * 0.072;
             }
 
             // Ray marching
