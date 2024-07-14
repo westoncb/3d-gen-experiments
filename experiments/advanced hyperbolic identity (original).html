@@ -29,11 +29,6 @@
 
             #define PI 3.14159265359
 
-            float smin(float a, float b, float k) {
-                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-                return mix(b, a, h) - k * h * (1.0 - h);
-            }
-
             // Complex number operations
             vec2 cMul(vec2 a, vec2 b) {
                 return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
@@ -99,11 +94,11 @@
             // Main distance function
             float sceneSDF(vec3 p) {
                 vec2 z = kleinToPoincare(p.xy);
-                float w = cos(uTime * 0.2);
-                float u = sin(uTime * 0.3);
+                float w = sin(uTime * 0.2);
+                float u = cos(uTime * 0.3);
                 float d1 = identityField(p, w, u, uTime);
-                float d2 = identityField(vec3(z, length(z)), w + 1.0, u + 1.0, uTime);
-                return (mix(d1, d2, 1. + (w / u) * sin(uTime * 0.5)) + 1.) * 0.072;
+                float d2 = identityField(p + vec3(1.0, 2.0, 3.0), w + 1.0, u + 1.0, uTime * 1.1);
+                return mix(d1, d2, 0.5 + 0.5 * sin(uTime * 0.5)) - 0.5;
             }
 
             // Ray marching
@@ -112,8 +107,8 @@
                 for(int i = 0; i < 100; i++) {
                     vec3 p = ro + rd * t;
                     float d = sceneSDF(p);
-                    if(d < 0.00001 || t > 20000.0) break;
-                    t += d * 0.25;
+                    if(d < 0.001 || t > 20.0) break;
+                    t += d * 0.5;
                 }
                 return t;
             }
@@ -131,7 +126,7 @@
             void main() {
                 vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
                 
-                vec3 ro = vec3(0., 0., -3.);
+                vec3 ro = vec3(0, 0, -3);
                 vec3 rd = normalize(vec3(uv, 1));
 
                 float d = rayMarch(ro, rd);
@@ -140,7 +135,7 @@
                 
                 vec3 col = vec3(0);
                 
-                if(d < 1000000.0) {
+                if(d < 20.0) {
                     float w = sin(uTime * 0.2);
                     float u = cos(uTime * 0.3);
                     float f = identityField(p, w, u, uTime);
@@ -223,7 +218,7 @@
         }
 
         function render(time) {
-            gl.uniform1f(timeUniformLocation, time * 0.0005);
+            gl.uniform1f(timeUniformLocation, time * 0.001);
             gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             requestAnimationFrame(render);
