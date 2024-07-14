@@ -101,12 +101,23 @@
                 vec2 z = p.xy;
                 float w = cos(uTime * 0.2);
                 float u = sin(uTime * 0.3);
-                float d1 = identityField(p, w, u, uTime);
-                float d2 = identityField(vec3(poincareToKlein(z), length(poincareToKlein(z))), w + 1.0, u + 1.0, uTime * 1.1);
+                float d1 = identityField(vec3(poincareToKlein(z), length(poincareToKlein(z))), w, u, uTime);
+                float d2 = identityField(p, w + 1.0, u + 1.0, uTime * 1.1);
 
-                return (length(vec2(d1, d2)) * (1. + .5 * sin(uTime * 0.5))) * .25;
+                float cycleScale = .5;
+                float scale = .25;
+                float shift = 1.;
 
-                return (smin(d1, d2, .0 + .5 * sin(uTime * 0.5))) * 1.;
+                // vec2 mobius(vec2 z, vec2 a, vec2 b, vec2 c, vec2 d) {
+                // return cDiv(cMul(a, z) + b, cMul(c, z) + d);
+                // }
+
+                vec2 mob = mobius(vec2(d2, d1), vec2(d1, d2), vec2(0.), vec2(0.), vec2(1.));
+                return (length(mob) * (shift + cycleScale * sin(uTime * 0.5))) * scale;
+
+                // return (length(vec2(d1, d2)) * (shift + cycleScale * sin(uTime * 0.5))) * scale;
+
+                // return (smin(d1, d2, shift + cycleScale * sin(uTime * 0.5))) * scale;
             }
 
             // Ray marching
