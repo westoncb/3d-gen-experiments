@@ -29,7 +29,7 @@ out vec4 fragColor;
 
 #define MAX_STEPS 256
 #define MAX_DIST 20.0
-#define SURF_DIST 0.2718281828459045
+#define SURF_DIST .618
 
 float smin(float a, float b, float k) {
     float h = max(k - abs(a - b), 0.0) / k;
@@ -78,7 +78,7 @@ float getDistance(vec3 p) {
     float hypDist = hyperbolicDist(p);
     float spaceDist = sin(hypDist * 5.0 + u_time) * 0.1;
     
-    return mix(minDist, spaceDist, spaceDist / hypDist) * 2.718281828459045;
+    return mix(minDist, spaceDist, spaceDist / hypDist) * 1.618;
 }
 
 // Ray marching function
