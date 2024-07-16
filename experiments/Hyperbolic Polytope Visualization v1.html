@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyperbolic Polytope Visualization</title>
+    <script id="fragment-shader" type="x-shader/x-fragment">
+    precision highp float;
+
+    uniform vec2 u_resolution;
+    uniform float u_time;
+
+    #define PI 3.14159265359
+    #define ITERATIONS 8
+
+    // Complex number operations
+    vec2 complex_mul(vec2 a, vec2 b) {
+        return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+    }
+
+    vec2 complex_div(vec2 a, vec2 b) {
+        float denom = dot(b, b);
+        return vec2(dot(a, b), a.y*b.x - a.x*b.y) / denom;
+    }
+
+    // Möbius transformation
+    vec2 mobius_transform(vec2 z, vec2 a) {
+        return complex_div(z + a, vec2(1.0, 0.0) + complex_mul(vec2(0.0, 1.0), z));
+    }
+
+    // Distance in Poincaré disk model
+    float hyperbolic_distance(vec2 z1, vec2 z2) {
+        vec2 diff = complex_div(z1 - z2, vec2(1.0, 0.0) - complex_mul(z2, vec2(z1.x, -z1.y)));
+        return log((1.0 + length(diff)) / (1.0 - length(diff)));
+    }
+
+    // Main coloring function
+    vec3 color_function(vec2 z) {
+        float dist = hyperbolic_distance(z, vec2(0.0));
+        
+        // Base color based on distance from center
+        vec3 color = vec3(0.5 + 0.5 * cos(dist * 2.0 + u_time * 0.1),
+                          0.5 + 0.5 * sin(dist * 3.0 + u_time * 0.2),
+                          0.5 + 0.5 * cos(dist * 4.0 + u_time * 0.3));
+        
+        // Apply transformations and accumulate color
+        for (int i = 0; i < ITERATIONS; i++) {
+            z = mobius_transform(z, vec2(0.1, 0.2) * float(i) / float(ITERATIONS));
+            float local_dist = hyperbolic_distance(z, vec2(0.0));
+            color += 0.1 * vec3(0.5 + 0.5 * sin(local_dist * 5.0 + float(i)),
+                                0.5 + 0.5 * cos(local_dist * 6.0 + float(i)),
+                                0.5 + 0.5 * sin(local_dist * 7.0 + float(i)));
+        }
+        
+        return color / 2.0;
+    }
+
+    void main() {
+        vec2 st = (gl_FragCoord.xy / u_resolution) * 2.0 - 1.0;
+        st.x *= u_resolution.x / u_resolution.y;
+        
+        // Map to Poincaré disk
+        float r = length(st);
+        if (r < 1.0) {
+            vec3 color = color_function(st);
+            gl_FragColor = vec4(color, 1.0);
+        } else {
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+    }
+    </script>
+    <script>
+    window.onload = function() {
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            console.log('WebGL not supported, falling back on experimental-webgl');
+            gl = canvas.getContext('experimental-webgl');
+        }
+
+        if (!gl) {
+            alert('Your browser does not support WebGL');
+            return;
+        }
+
+        const vertexShaderSource = `
+            attribute vec4 a_position;
+            void main() {
+                gl_Position = a_position;
+            }
+        `;
+
+        const fragmentShaderSource = document.getElementById('fragment-shader').text;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+            return;
+        }
+
+        gl.useProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = new Float32Array([
+            -1, -1,
+             1, -1,
+            -1,  1,
+            -1,  1,
+             1, -1,
+             1,  1,
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+        const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(positionAttributeLocation);
+        gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+        const timeUniformLocation = gl.getUniformLocation(program, "u_time");
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+            }
+        }
+
+        function render(time) {
+            time *= 0.01;  // convert to seconds
+
+            resizeCanvasToDisplaySize(gl.canvas);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(timeUniformLocation, time);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    };
+    </script>
+    <style>
+        body { margin: 0; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas"></canvas>
+</body>
+</html>
+
+
+<!-- This WebGL program creates a visualization that attempts to capture some of the key aspects of the {3,3,5} hyperbolic Coxeter polytope we discussed. Here's a breakdown of what the shader does:
+
+It uses the Poincaré disk model to represent hyperbolic space. The entire visualization is contained within a unit circle.
+The hyperbolic_distance function calculates distances in the hyperbolic space, which is crucial for creating the proper curvature effects.
+The mobius_transform function applies Möbius transformations, which are isometries of hyperbolic space. This is used to create the recursive, self-similar structures.
+The main coloring function applies several layers of transformations and color calculations:
+
+It starts with a base color determined by the hyperbolic distance from the center.
+It then applies a series of Möbius transformations, adding color contributions based on the local hyperbolic distance after each transformation.
+This creates a complex, layered structure that suggests the branching and self-similarity of the polytope.
+
+
+The shader uses time-based animation to create a dynamic, evolving visualization.
+
+Key aspects of the visualization:
+
+Self-similarity: The repeated application of Möbius transformations creates self-similar structures at different scales.
+Branching structures: The way the colors and patterns spread out from the center suggests the branching nature of hyperbolic space.
+Curvature: The way the structures appear to curve and wrap around within the disk suggests the negative curvature of hyperbolic space.
+
+To use this visualization:
+
+Save the entire HTML content to a file (e.g., hyperbolic_polytope.html).
+Open the file in a web browser that supports WebGL.
+
+You should see a dynamic, colorful visualization that suggests the structure of the {3,3,5} hyperbolic Coxeter polytope. The visualization will continuously evolve over time.
+This approach allows us to create a real-time, interactive visualization of these complex geometric concepts. It's not a perfect representation of the 4D polytope, but it captures many of the key ideas we discussed, including the balance between spherical and hyperbolic tendencies, the elaborative nature of hyperbolic space, and the suggestion of higher-dimensional curvature through 2D arrangement. -->

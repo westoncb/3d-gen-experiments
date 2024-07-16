@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyperbolic Symmetry and Higher Dimensional Projections</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #000; }
+        #canvas-container { position: relative; width: 100vw; height: 100vh; }
+        canvas { width: 100%; height: 100%; }
+        #controls { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.7); padding: 10px; border-radius: 5px; }
+        .slider-container { margin-bottom: 10px; }
+        input[type="range"] { width: 200px; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="glCanvas"></canvas>
+        <div id="controls">
+            <div class="slider-container">
+                <label for="mobius-a">Möbius a: </label>
+                <input type="range" id="mobius-a" min="-1" max="1" step="0.01" value="0">
+                <span id="mobius-a-value">0</span>
+            </div>
+            <div class="slider-container">
+                <label for="mobius-b">Möbius b: </label>
+                <input type="range" id="mobius-b" min="-1" max="1" step="0.01" value="0">
+                <span id="mobius-b-value">0</span>
+            </div>
+            <div class="slider-container">
+                <label for="lie-param">Lie Parameter: </label>
+                <input type="range" id="lie-param" min="0" max="2" step="0.01" value="1">
+                <span id="lie-param-value">1</span>
+            </div>
+            <div class="slider-container">
+                <label for="projection">Projection: </label>
+                <input type="range" id="projection" min="0" max="1" step="0.01" value="0.5">
+                <span id="projection-value">0.5</span>
+            </div>
+        </div>
+    </div>
+    <script>
+        const vertexShaderSource = `
+            attribute vec4 a_position;
+            void main() {
+                gl_Position = a_position;
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+
+            uniform vec2 u_resolution;
+            uniform float u_time;
+            uniform vec2 u_mobius;
+            uniform float u_lie_param;
+            uniform float u_projection;
+
+            const float PI = 3.14159265359;
+
+            // Implement cosh and sinh
+            float cosh(float x) {
+                float e = exp(x);
+                return (e + 1.0 / e) / 2.0;
+            }
+
+            float sinh(float x) {
+                float e = exp(x);
+                return (e - 1.0 / e) / 2.0;
+            }
+
+            vec2 complex_mul(vec2 a, vec2 b) {
+                return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+            }
+
+            vec2 complex_div(vec2 a, vec2 b) {
+                float denom = b.x * b.x + b.y * b.y;
+                return vec2(
+                    (a.x * b.x + a.y * b.y) / denom,
+                    (a.y * b.x - a.x * b.y) / denom
+                );
+            }
+
+            vec2 mobius_transform(vec2 z, vec2 a, vec2 b) {
+                return complex_div(complex_mul(z, a) + b, vec2(1.0, 0.0) + complex_mul(z, complex_mul(a, b)));
+            }
+
+            vec3 poincare_to_klein(vec3 p) {
+                float d = 1.0 / (1.0 - p.z);
+                return vec3(p.xy * d, (1.0 + dot(p.xy, p.xy) - p.z * p.z) * d * 0.5);
+            }
+
+            vec3 klein_to_poincare(vec3 k) {
+                float d = 1.0 / (1.0 + k.z);
+                return vec3(k.xy * d, (1.0 - dot(k.xy, k.xy)) * d * 0.5);
+            }
+
+            vec3 lie_transform(vec3 p, float t) {
+                // This is a simplified representation of a Lie group transformation
+                // In this case, we're using a rotation in the xz-plane
+                float c = cos(t);
+                float s = sin(t);
+                return vec3(
+                    c * p.x + s * p.z,
+                    p.y,
+                    -s * p.x + c * p.z
+                );
+            }
+
+            vec3 po21_transform(vec3 p, float t) {
+                // This represents a boost in the PO(2,1) group
+                float c = cosh(t);
+                float s = sinh(t);
+                return vec3(
+                    c * p.x + s * p.z,
+                    p.y,
+                    s * p.x + c * p.z
+                );
+            }
+
+            vec3 scene(vec3 p) {
+                // Apply Möbius transformation in the complex plane
+                vec2 z = mobius_transform(p.xy, u_mobius, vec2(0.0, 0.0));
+                p = vec3(z, p.z);
+
+                // Convert to Klein model
+                p = poincare_to_klein(p);
+
+                // Apply Lie group transformation
+                p = lie_transform(p, u_lie_param);
+
+                // Apply PO(2,1) transformation
+                p = po21_transform(p, sin(u_time * 0.05));
+
+                // Convert back to Poincaré model
+                p = klein_to_poincare(p);
+
+                return p;
+            }
+
+            vec3 get_color(vec3 p) {
+                // Color based on position in hyperbolic space
+                vec3 base_color = vec3(0.5) + 0.5 * cos(PI * p + vec3(0, 2, 4));
+                float intensity = 1.0 / (1.0 + length(p));
+                return base_color * intensity;
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+
+                // Project 2D point onto Poincaré disk
+                float r = length(uv);
+                vec3 p = vec3(uv, sqrt(max(0.0, 1.0 - r*r)));
+
+                // Apply scene transformations
+                p = scene(p);
+
+                // Project back to 2D
+                vec2 projected = mix(p.xy, uv, u_projection);
+
+                // Color based on final position
+                vec3 col = get_color(vec3(projected, p.z));
+
+                // Add boundary glow
+                float boundary = 1.0 - smoothstep(0.9, 1.0, length(projected));
+                col += vec3(1.0, 0.7, 0.3) * boundary;
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+      function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function createProgram(gl, vertexShader, fragmentShader) {
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+                return null;
+            }
+            return program;
+        }
+
+        function main() {
+            const canvas = document.getElementById('glCanvas');
+            const gl = canvas.getContext('webgl');
+
+            if (!gl) {
+                console.error('Unable to initialize WebGL. Your browser may not support it.');
+                return;
+            }
+
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+            const program = createProgram(gl, vertexShader, fragmentShader);
+
+            const positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+            const resolutionUniformLocation = gl.getUniformLocation(program, 'u_resolution');
+            const timeUniformLocation = gl.getUniformLocation(program, 'u_time');
+            const mobiusUniformLocation = gl.getUniformLocation(program, 'u_mobius');
+            const lieParamUniformLocation = gl.getUniformLocation(program, 'u_lie_param');
+            const projectionUniformLocation = gl.getUniformLocation(program, 'u_projection');
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            const positions = [
+                -1, -1,
+                 1, -1,
+                -1,  1,
+                 1,  1,
+            ];
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+            function render(time) {
+                time *= 0.001;  // Convert to seconds
+
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+                gl.clearColor(0, 0, 0, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                gl.useProgram(program);
+                gl.enableVertexAttribArray(positionAttributeLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+                gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+                gl.uniform1f(timeUniformLocation, time);
+                gl.uniform2f(mobiusUniformLocation, 
+                    parseFloat(document.getElementById('mobius-a').value),
+                    parseFloat(document.getElementById('mobius-b').value)
+                );
+                gl.uniform1f(lieParamUniformLocation, parseFloat(document.getElementById('lie-param').value));
+                gl.uniform1f(projectionUniformLocation, parseFloat(document.getElementById('projection').value));
+
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                requestAnimationFrame(render);
+            }
+
+            function resizeCanvasToDisplaySize() {
+                const displayWidth  = canvas.clientWidth;
+                const displayHeight = canvas.clientHeight;
+
+                if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                    canvas.width  = displayWidth;
+                    canvas.height = displayHeight;
+                }
+            }
+
+            resizeCanvasToDisplaySize();
+            requestAnimationFrame(render);
+
+            // Update slider value displays
+            document.querySelectorAll('input[type="range"]').forEach(slider => {
+                slider.nextElementSibling.textContent = slider.value;
+                slider.addEventListener('input', function() {
+                    this.nextElementSibling.textContent = this.value;
+                });
+            });
+        }
+
+        window.onload = main;
+    </script>
+</body>
+</html>
