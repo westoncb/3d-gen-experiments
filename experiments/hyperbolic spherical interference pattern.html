@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated Hyperbolic Polytope Visualization</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+        in vec4 a_position;
+        void main() {
+            gl_Position = a_position;
+        }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+        precision highp float;
+
+        uniform vec2 u_resolution;
+        uniform float u_time;
+
+        out vec4 fragColor;
+
+        #define MAX_STEPS 200
+        #define MAX_DIST 100.0
+        #define SURF_DIST 0.16
+
+        // 4D to 3D projection
+        vec3 project4Dto3D(vec4 p) {
+            float w = 1.0 / (2.0 - p.w);
+            return vec3(p.xyz) * w;
+        }
+
+        // Hyperbolic distance in 4D
+        float hyperbolicDist4D(vec4 p) {
+            float len = length(p);
+            len = clamp(len, 0.00001, 0.99999);
+            return log((1.0 + len) / (1.0 - len));
+        }
+
+        // 4D Mobius transformation
+        vec4 mobius4D(vec4 p) {
+            float r2 = dot(p, p);
+            float factor = 1.0 / (1.0 + r2);
+            return vec4(2.0 * p.xyz, r2 - 1.0) * factor;
+        }
+
+        // Distance function for 4D hyperbolic structure
+        float getDistance(vec3 p) {
+            vec4 p4 = vec4(p, 0.0);
+
+            // Apply repeated 4D Mobius transformations
+            for (int i = 0; i < 5; i++) {
+                p4 = mobius4D(p4);
+                p4 = abs(p4);
+                if (p4.x < p4.y) p4.xy = p4.yx;
+                if (p4.x < p4.z) p4.xz = p4.zx;
+                if (p4.x < p4.w) p4.xw = p4.wx;
+                if (p4.y < p4.z) p4.yz = p4.zy;
+                if (p4.y < p4.w) p4.yw = p4.wy;
+                if (p4.z < p4.w) p4.zw = p4.wz;
+                p4 = p4 * 2.0 - 1.0;
+            }
+
+            // Project back to 3D
+            vec3 q = project4Dto3D(p4);
+
+            // Create a structure based on the {3,3,5} polytope
+            float d = length(q) - 0.5;
+            for (int i = 0; i < 5; i++) {
+                float angle = float(i) * 2.0 * 3.14159 / 5.0;
+                vec3 offset = 0.8 * vec3(cos(angle), sin(angle), 0.5);
+                d = min(d, length(q - offset) - 0.2);
+            }
+
+            // Apply hyperbolic distortion
+            return d * (1.0 - length(p) * length(p));
+        }
+
+        // Ray marching function
+        float rayMarch(vec3 ro, vec3 rd) {
+            float dO = 0.0;
+            for (int i = 0; i < MAX_STEPS; i++) {
+                vec3 p = ro + rd * dO;
+                float dS = getDistance(p);
+                dO += dS;
+                if (dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+            }
+            return dO;
+        }
+
+        // Calculate normal
+        vec3 getNormal(vec3 p) {
+            float d = getDistance(p);
+            vec2 e = vec2(0.001, 0);
+            vec3 n = d - vec3(
+                getDistance(p - e.xyy),
+                getDistance(p - e.yxy),
+                getDistance(p - e.yyx));
+            return normalize(n);
+        }
+
+        // Main coloring function
+        vec3 getColor(vec3 p) {
+            vec4 p4 = vec4(p, sin(u_time * 0.1)); // Adding time-based 4th dimension
+            float hd = hyperbolicDist4D(p4);
+
+            // Base color from hyperbolic distance
+            vec3 col = 0.5 + 0.5 * cos(hd * 2.0 + vec3(0, 2, 4));
+
+            // Add detail based on the structure's features
+            float detail = fract(hd * 10.0);
+            col = mix(col, vec3(1.0) - col, smoothstep(0.45, 0.55, detail));
+
+            // Enhance edges
+            float edge = length(fwidth(p4));
+            col = mix(col, vec3(1.0), smoothstep(0.0, 0.2, edge));
+
+            return col;
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+
+            // Camera setup
+            vec3 ro = vec3(0, 0, -3);
+            vec3 rd = normalize(vec3(uv, 1));
+
+            // Rotate camera
+            float t = u_time * 0.1;
+            mat3 rot = mat3(
+                cos(t), 0, sin(t),
+                0, 1, 0,
+                -sin(t), 0, cos(t)
+            );
+            ro *= rot;
+            rd *= rot;
+
+            // Perform ray marching
+            float d = rayMarch(ro, rd);
+            vec3 col;
+
+            if (d > MAX_DIST) {
+                col = vec3(0.0); // Background color
+            } else {
+                vec3 p = ro + rd * d;
+                vec3 n = getNormal(p);
+
+                // Lighting calculation
+                vec3 lightDir = normalize(vec3(1, 2, -3));
+                float diff = max(dot(n, lightDir), 0.0);
+
+                col = getColor(p);
+                col *= diff * 0.8 + 0.2;
+
+                // Fade out based on distance
+                col *= 1.0 - d / MAX_DIST;
+            }
+
+            // Gamma correction and contrast enhancement
+            col = pow(col, vec3(0.4545));
+            col = smoothstep(0.0, 1.0, col);
+
+            fragColor = vec4(col, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+
+        if (!gl) {
+            alert('Unable to initialize WebGL. Your browser or machine may not support it.');
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShaderSource = document.getElementById('vertex-shader').textContent;
+        const fragmentShaderSource = document.getElementById('fragment-shader').textContent;
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+        }
+
+        const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+        const resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+        const timeUniformLocation = gl.getUniformLocation(program, "u_time");
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = [
+            -1, -1,
+             1, -1,
+            -1,  1,
+            -1,  1,
+             1, -1,
+             1,  1,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+                return true;
+            }
+            return false;
+        }
+
+        function render(time) {
+            time *= 0.0002;  // Convert to seconds
+
+            resizeCanvasToDisplaySize(gl.canvas);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(timeUniformLocation, time);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

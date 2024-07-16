@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5D Interference Patterns and Cross-Dimensional Artifacts</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .slider-container {
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            width: 120px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <div id="controls">
+        <div class="slider-container">
+            <label for="evolutionSpeed">Evolution Speed:</label>
+            <input type="range" id="evolutionSpeed" min="0" max="2" step="0.1" value="0.5">
+            <span id="evolutionSpeedValue">0.5</span>
+        </div>
+        <div class="slider-container">
+            <label for="dimensionality">Dimensionality:</label>
+            <input type="range" id="dimensionality" min="3" max="5" step="0.1" value="4">
+            <span id="dimensionalityValue">4</span>
+        </div>
+        <div class="slider-container">
+            <label for="interference">Interference:</label>
+            <input type="range" id="interference" min="0" max="1" step="0.1" value="0.5">
+            <span id="interferenceValue">0.5</span>
+        </div>
+    </div>
+    <script>
+        const vsSource = `
+            attribute vec4 aVertexPosition;
+            varying vec2 vUv;
+            void main() {
+                vUv = aVertexPosition.xy;
+                gl_Position = aVertexPosition;
+            }
+        `;
+
+        const fsSource = `
+            precision highp float;
+            varying vec2 vUv;
+            uniform float uTime;
+            uniform float uEvolutionSpeed;
+            uniform float uDimensionality;
+            uniform float uInterference;
+
+            #define MAX_STEPS 100
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // 5D vector
+            struct vec5 {
+                vec3 xyz;
+                vec2 wv;
+            };
+
+            // 5D rotation function
+            vec5 rotate5D(vec5 p, float t) {
+                float c1 = cos(t), s1 = sin(t);
+                float c2 = cos(t * 1.3), s2 = sin(t * 1.3);
+                float c3 = cos(t * 1.7), s3 = sin(t * 1.7);
+                float c4 = cos(t * 2.1), s4 = sin(t * 2.1);
+                
+                vec5 q;
+                q.xyz.x = c1*p.xyz.x - s1*p.xyz.y;
+                q.xyz.y = s1*p.xyz.x + c1*p.xyz.y;
+                q.xyz.z = c2*p.xyz.z - s2*p.wv.x;
+                q.wv.x = s2*p.xyz.z + c2*p.wv.x;
+                q.wv.y = c3*p.wv.y - s3*q.xyz.x;
+                q.xyz.x = s3*p.wv.y + c3*q.xyz.x;
+                
+                return q;
+            }
+
+            // 5D to 3D projection
+            vec3 project5Dto3D(vec5 p, float dim) {
+                float w = mix(1.0, p.wv.x, smoothstep(3.0, 5.0, dim));
+                float v = mix(1.0, p.wv.y, smoothstep(4.0, 5.0, dim));
+                return p.xyz / (2.0 - w * v);
+            }
+
+            // 5D interference pattern
+            float interferencePattern(vec5 p, float t, float interference) {
+                vec5 q = rotate5D(p, t);
+                float pattern = sin(q.xyz.x * 10.0) * sin(q.xyz.y * 10.0) * sin(q.xyz.z * 10.0) * 
+                                sin(q.wv.x * 10.0) * sin(q.wv.y * 10.0);
+                return mix(1.0, pattern, interference);
+            }
+
+            // Signed distance function for a 5D hypersphere
+            float sdHypersphere5D(vec5 p, float radius) {
+                return length(vec4(p.xyz, length(p.wv))) - radius;
+            }
+
+            // Raymarching in 3D space
+            float rayMarch(vec3 ro, vec3 rd, float dim) {
+                float dO = 0.0;
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    vec5 q = vec5(p, vec2(0.0, 0.0));
+                    q = rotate5D(q, uTime * uEvolutionSpeed);
+                    float dS = sdHypersphere5D(q, 1.0) / interferencePattern(q, uTime, uInterference);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+                return dO;
+            }
+
+            // Calculate normal
+            vec3 getNormal(vec3 p, float dim) {
+                vec2 e = vec2(0.01, 0);
+                vec3 n = vec3(
+                    sdHypersphere5D(rotate5D(vec5(p + e.xyy, vec2(0.0)), uTime * uEvolutionSpeed), 1.0) - 
+                    sdHypersphere5D(rotate5D(vec5(p - e.xyy, vec2(0.0)), uTime * uEvolutionSpeed), 1.0),
+                    sdHypersphere5D(rotate5D(vec5(p + e.yxy, vec2(0.0)), uTime * uEvolutionSpeed), 1.0) - 
+                    sdHypersphere5D(rotate5D(vec5(p - e.yxy, vec2(0.0)), uTime * uEvolutionSpeed), 1.0),
+                    sdHypersphere5D(rotate5D(vec5(p + e.yyx, vec2(0.0)), uTime * uEvolutionSpeed), 1.0) - 
+                    sdHypersphere5D(rotate5D(vec5(p - e.yyx, vec2(0.0)), uTime * uEvolutionSpeed), 1.0)
+                );
+                return normalize(n);
+            }
+
+            void main() {
+                vec2 uv = (vUv - 0.5) * 2.0;
+                uv.x *= gl_FragCoord.x / gl_FragCoord.y;
+
+                vec3 ro = vec3(0, 0, -3);
+                vec3 rd = normalize(vec3(uv, 1));
+
+                float d = rayMarch(ro, rd, uDimensionality);
+                vec3 p = ro + rd * d;
+                vec3 n = getNormal(p, uDimensionality);
+
+                vec3 color = vec3(0);
+
+                if(d < MAX_DIST) {
+                    // Basic lighting
+                    vec3 lightDir = normalize(vec3(1, 1, -1));
+                    float diff = max(dot(n, lightDir), 0.0);
+                    vec3 baseColor = 0.5 + 0.5 * cos(uTime + p.xyx + vec3(0, 2, 4));
+                    color = baseColor * diff;
+                    
+                    // Add interference pattern to color
+                    vec5 q = rotate5D(vec5(p, vec2(0.0, 0.0)), uTime * uEvolutionSpeed);
+                    float pattern = interferencePattern(q, uTime, uInterference);
+                    color *= pattern;
+                }
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert('Unable to initialize WebGL. Your browser or machine may not support it.');
+            throw new Error('WebGL not supported');
+        }
+
+        function compileShader(gl, source, type) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                throw new Error('Shader compilation failed');
+            }
+
+            return shader;
+        }
+
+        function createProgram(gl, vsSource, fsSource) {
+            const vertexShader = compileShader(gl, vsSource, gl.VERTEX_SHADER);
+            const fragmentShader = compileShader(gl, fsSource, gl.FRAGMENT_SHADER);
+
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+                throw new Error('Shader program initialization failed');
+            }
+
+            return program;
+        }
+
+        const shaderProgram = createProgram(gl, vsSource, fsSource);
+
+        const programInfo = {
+            program: shaderProgram,
+            attribLocations: {
+                vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+            },
+            uniformLocations: {
+                time: gl.getUniformLocation(shaderProgram, 'uTime'),
+                evolutionSpeed: gl.getUniformLocation(shaderProgram, 'uEvolutionSpeed'),
+                dimensionality: gl.getUniformLocation(shaderProgram, 'uDimensionality'),
+                interference: gl.getUniformLocation(shaderProgram, 'uInterference'),
+            },
+        };
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = [
+            -1.0,  1.0,
+             1.0,  1.0,
+            -1.0, -1.0,
+             1.0, -1.0,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        function render(time) {
+            time *= 0.001;
+
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(programInfo.program);
+
+            gl.uniform1f(programInfo.uniformLocations.time, time);
+            gl.uniform1f(programInfo.uniformLocations.evolutionSpeed, parseFloat(document.getElementById('evolutionSpeed').value));
+            gl.uniform1f(programInfo.uniformLocations.dimensionality, parseFloat(document.getElementById('dimensionality').value));
+            gl.uniform1f(programInfo.uniformLocations.interference, parseFloat(document.getElementById('interference').value));
+
+            gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Update slider value displays
+        function updateSliderValue(sliderId) {
+            const slider = document.getElementById(sliderId);
+            const valueSpan = document.getElementById(sliderId + 'Value');
+            valueSpan.textContent = slider.value;
+        }
+
+        ['evolutionSpeed', 'dimensionality', 'interference'].forEach(sliderId => {
+            const slider = document.getElementById(sliderId);
+            slider.addEventListener('input', () => updateSliderValue(sliderId));
+            updateSliderValue(sliderId);
+        });
+    </script>
+</body>
+</html>
