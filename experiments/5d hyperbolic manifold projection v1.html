@@ -3,41 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced 5D Hyperbolic Manifold Projection</title>
+    <title>5D Hyperbolic Manifold Projection</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { width: 100vw; height: 100vh; display: block; }
-        #controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(255, 255, 255, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-            backdrop-filter: blur(4px);
-            opacity: 0.45;
-        }
-        .slider-container {
-            margin-bottom: 10px;
-        }
     </style>
 </head>
 <body>
     <canvas id="glCanvas"></canvas>
-    <div id="controls">
-        <div class="slider-container">
-            <label for="scale">Scale: </label>
-            <input type="range" id="scale" min="0.1" max="2" step="0.1" value="1">
-        </div>
-        <div class="slider-container">
-            <label for="cameraZ">Camera Z: </label>
-            <input type="range" id="cameraZ" min="-5" max="-1" step="0.1" value="-3">
-        </div>
-        <div class="slider-container">
-            <label for="iterations">Iterations: </label>
-            <input type="range" id="iterations" min="5" max="20" step="1" value="7">
-        </div>
-    </div>
 
     <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
         in vec4 a_position;
@@ -51,25 +24,30 @@
 
     uniform vec2 u_resolution;
     uniform float u_time;
-    uniform float u_scale;
-    uniform float u_cameraZ;
-    uniform int u_iterations;
 
     out vec4 fragColor;
 
     #define MAX_STEPS 100
-    #define MAX_DIST 400.0
-    #define SURF_DIST 0.01
+    #define MAX_DIST 100.0
+    #define SURF_DIST 0.001
 
+    // 5D vector
     struct vec5 {
         vec3 xyz;
         vec2 wu;
     };
 
+    // Complex number operations
     vec2 complex_mul(vec2 a, vec2 b) {
         return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
     }
 
+    vec2 complex_div(vec2 a, vec2 b) {
+        float denom = dot(b, b);
+        return vec2(dot(a, b), a.y*b.x - a.x*b.y) / denom;
+    }
+
+    // 5D rotation in XY plane
     vec5 rotate5D_XY(vec5 v, float angle) {
         float c = cos(angle);
         float s = sin(angle);
@@ -79,6 +57,7 @@
         );
     }
 
+    // 5D rotation in WU plane
     vec5 rotate5D_WU(vec5 v, float angle) {
         float c = cos(angle);
         float s = sin(angle);
@@ -88,22 +67,24 @@
         );
     }
 
+    // 5D to 3D projection
     vec3 project5Dto3D(vec5 v) {
         float w = 1.0 / (2.0 - v.wu.x);
         return v.xyz * w;
     }
 
+    // 5D hyperbolic distance
     float hyperbolicDist5D(vec5 p) {
         float r2 = dot(p.xyz, p.xyz) + dot(p.wu, p.wu);
         return log((1.0 + sqrt(r2)) / (1.0 - sqrt(r2)));
     }
 
+    // 5D Mandelbulb-inspired fractal
     vec5 mandelbulb5D(vec5 p) {
         vec5 z = p;
         float dr = 1.0;
         float r = 0.0;
-        for(int i = 0; i < 20; i++) {
-            if(i >= u_iterations) break;
+        for(int i = 0; i < 15; i++) {
             r = length(vec4(z.xyz, z.wu.x));
             if(r > 2.0) break;
             
@@ -129,20 +110,22 @@
         return z;
     }
 
+    // Distance function
     float getDistance(vec3 p) {
-        vec5 p5 = vec5(p * u_scale, vec2(sin(u_time * 0.1), cos(u_time * 0.1)));
+        vec5 p5 = vec5(p, vec2(sin(u_time * 0.1), cos(u_time * 0.1)));
         p5 = rotate5D_XY(p5, u_time * 0.2);
         p5 = rotate5D_WU(p5, u_time * 0.3);
         
         vec5 fractal = mandelbulb5D(p5);
         vec3 projected = project5Dto3D(fractal);
         
-        float dist = length(p - projected) - 0.1 / u_scale;
+        float dist = length(p - projected) - 0.1;
         float hypDist = hyperbolicDist5D(p5);
         
-        return smoothstep(dist, hypDist, sin(hypDist * 2.0 + u_time) * 0.5 + 0.5) * .1;
+        return mix(dist, hypDist, sin(hypDist * 2.0 + u_time) * 0.5 + 0.5) * 0.5;
     }
 
+    // Ray marching
     float rayMarch(vec3 ro, vec3 rd) {
         float dO = 0.0;
         for(int i = 0; i < MAX_STEPS; i++) {
@@ -154,6 +137,7 @@
         return dO;
     }
 
+    // Get normal
     vec3 getNormal(vec3 p) {
         float d = getDistance(p);
         vec2 e = vec2(0.001, 0);
@@ -165,21 +149,22 @@
         return normalize(n);
     }
 
+    // Get color
     vec3 getColor(vec3 p) {
-        vec5 p5 = vec5(p * .1, vec2(sin(u_time * 0.1), cos(u_time * 0.1)));
+        vec5 p5 = vec5(p, vec2(sin(u_time * 0.1), cos(u_time * 0.1)));
         float hypDist = hyperbolicDist5D(p5);
-        vec3 col = 0.5 + 0.5 * cos(hypDist * 3.0 + vec3(0, 2, 4));
+        vec3 col = 0.5 + 0.5 * cos(hypDist + vec3(0, 2, 4));
         
         vec5 fractal = mandelbulb5D(p5);
-        vec3 fractalCol = 0.5 + 0.5 * cos(length(fractal.xyz) * 5.0 + vec3(1, 2, 3));
+        vec3 fractalCol = 0.5 + 0.5 * cos(length(fractal.xyz) * 3.0 + vec3(1, 2, 3));
         
-        return mix(col, fractalCol, 0.5 + 0.5 * sin(u_time * 0.5));
+        return mix(col, fractalCol, 0.5 + 0.5 * sin(u_time));
     }
 
     void main() {
         vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
         
-        vec3 ro = vec3(0, 0, u_cameraZ);
+        vec3 ro = vec3(0, 0, -3);
         vec3 rd = normalize(vec3(uv, 1));
         
         float d = rayMarch(ro, rd);
@@ -211,7 +196,7 @@
         const gl = canvas.getContext('webgl2');
 
         if (!gl) {
-            alert('Unable to initialize WebGL 2. Your browser or machine may not support it.');
+            alert('Unable to initialize WebGL. Your browser or machine may not support it.');
         }
 
         function createShader(gl, type, source) {
@@ -244,9 +229,6 @@
         const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
         const resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
         const timeUniformLocation = gl.getUniformLocation(program, "u_time");
-        const scaleUniformLocation = gl.getUniformLocation(program, "u_scale");
-        const cameraZUniformLocation = gl.getUniformLocation(program, "u_cameraZ");
-        const iterationsUniformLocation = gl.getUniformLocation(program, "u_iterations");
 
         const positionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -285,9 +267,6 @@
 
             gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
             gl.uniform1f(timeUniformLocation, time);
-            gl.uniform1f(scaleUniformLocation, parseFloat(document.getElementById('scale').value));
-            gl.uniform1f(cameraZUniformLocation, parseFloat(document.getElementById('cameraZ').value));
-            gl.uniform1i(iterationsUniformLocation, parseInt(document.getElementById('iterations').value));
 
             gl.drawArrays(gl.TRIANGLES, 0, 6);
 

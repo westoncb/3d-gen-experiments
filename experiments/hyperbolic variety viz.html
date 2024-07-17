@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Algebraic Variety Visualization</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <div id="controls">
+        <div>
+            <label for="varietyMix">Variety Mix: </label>
+            <input type="range" id="varietyMix" min="0" max="1" step="0.001" value="0.5">
+        </div>
+        <div>
+            <label for="rotationSpeed">Rotation Speed: </label>
+            <input type="range" id="rotationSpeed" min="0" max="2" step="0.001" value="1">
+        </div>
+        <div>
+            <label for="geodesicDensity">Geodesic Density: </label>
+            <input type="range" id="geodesicDensity" min="1" max="40" step="1" value="20">
+        </div>
+    </div>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec4 a_position;
+        void main() {
+            gl_Position = a_position;
+        }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+    precision highp float;
+
+    uniform vec2 u_resolution;
+    uniform float u_time;
+    uniform float u_varietyMix;
+    uniform float u_geodesicDensity;
+
+    #define MAX_STEPS 200
+    #define MAX_DIST 100.0
+    #define SURF_DIST 0.001
+
+    // 4D rotation matrix
+    mat4 rotate4D(float t) {
+        float c = cos(t), s = sin(t);
+        return mat4(
+            c, -s, 0, 0,
+            s,  c, 0, 0,
+            0,  0, c,-s,
+            0,  0, s, c
+        );
+    }
+
+    float smin(float a, float b, float k) {
+        float h = max(k - abs(a - b), 0.0) / k;
+        return min(a, b) - h * h * h * k * (1.0 / 6.0);
+    }
+
+    // Hyperbolic distance
+    float hyperbolicDist(vec4 p) {
+        float r2 = dot(p.xyz, p.xyz);
+        return log((1.0 + sqrt(1.0 + r2)) / sqrt(max(r2, 1e-6))) + abs(p.w);
+    }
+
+    // Möbius transformation in 4D
+    vec4 mobius4D(vec4 p) {
+        float k = 1.0 / max(dot(p, p), 1e-6);
+        return vec4(2.0*k*p.xyz, (k-1.0)/(k+1.0));
+    }
+
+    // First algebraic variety
+    float f1(vec4 p) {
+        return p.x*p.x + p.y*p.y - p.z*p.z - p.w*p.w;
+    }
+
+    // Second algebraic variety
+    float f2(vec4 p) {
+        return p.x*p.y - p.z*p.w;
+    }
+
+    // Signed distance function
+    float sdf(vec4 p) {
+        vec4 q = mobius4D(p);
+        float d1 = abs(f1(q));
+        float d2 = abs(f2(q));
+        return smin(d1, d2, 1.618033988749895) / (d2 * d1);
+    }
+
+    // Ray marching
+    float rayMarch(vec3 ro, vec3 rd, float w) {
+        float dO = 0.0;
+        for(int i = 0; i < MAX_STEPS; i++) {
+            vec4 p = vec4(ro + rd * dO, w);
+            float dS = sdf(p);
+            dO += dS;
+            if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+        }
+        return dO;
+    }
+
+    // Calculate normal
+    vec3 calcNormal(vec3 p, float w) {
+        vec2 e = vec2(0.001, 0);
+        vec3 n = vec3(
+            sdf(vec4(p+e.xyy, w)) - sdf(vec4(p-e.xyy, w)),
+            sdf(vec4(p+e.yxy, w)) - sdf(vec4(p-e.yxy, w)),
+            sdf(vec4(p+e.yyx, w)) - sdf(vec4(p-e.yyx, w))
+        );
+        return normalize(n);
+    }
+
+    // Improved geodesic calculation
+    float geodesicGrid(vec4 p) {
+        vec4 d = normalize(p);
+        float phi = atan(length(d.xy), d.z);
+        float theta = atan(d.y, d.x);
+        float psi = atan(d.w, length(d.xyz));
+        
+        float g1 = smoothstep(0.06, 0.0, abs(sin(phi * u_geodesicDensity)));
+        float g2 = smoothstep(0.06, 0.0, abs(sin(theta * u_geodesicDensity)));
+        float g3 = smoothstep(0.06, 0.0, abs(sin(psi * u_geodesicDensity)));
+        
+        return max(max(g1, g2), g3);
+    }
+
+    // Color based on 4D position
+    vec3 positionColor(vec4 p) {
+        vec3 col = 0.5 + 0.5 * cos(hyperbolicDist(p) + vec3(0,2,4));
+        return col * (0.5 + 0.5 * sin(length(p) * 3.0 + u_time));
+    }
+
+    void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+        
+        vec3 ro = vec3(0, 0, -4);
+        vec3 rd = normalize(vec3(uv, 1));
+
+        float t = u_time * 0.2;
+        mat4 rot = rotate4D(t);
+        
+        vec4 ro4 = rot * vec4(ro, 0);
+        vec4 rd4 = rot * vec4(rd, 0);
+
+        float d = rayMarch(ro4.xyz, rd4.xyz, ro4.w);
+        
+        vec3 col = vec3(0);
+        
+        if(d < MAX_DIST) {
+            vec4 p = ro4 + d * rd4;
+            vec3 n = calcNormal(p.xyz, p.w);
+            
+            // Basic lighting
+            vec3 lightDir = normalize(vec3(1, 1, -1));
+            float diff = max(dot(n, lightDir), 0.0);
+            
+            // Color based on 4D position
+            vec3 posCol = positionColor(p);
+            
+            // Geodesic grid
+            float grid = geodesicGrid(p);
+            
+            // Combine colors
+            col = mix(posCol, vec3(1), grid * 0.5);
+            col *= diff;
+            
+            // Fresnel effect
+            float fresnel = pow(1.0 - max(dot(n, -rd4.xyz), 0.0), 5.0);
+            col += vec3(0.7, 0.8, 1.0) * fresnel;
+        }
+        
+        // Fog effect
+        col = mix(col, vec3(0.1, 0.2, 0.3), 1.0 - exp(-0.01 * d));
+        
+        // Gamma correction
+        col = pow(col, vec3(0.4545));
+        
+        gl_FragColor = vec4(col, 1.0);
+    }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert('Unable to initialize WebGL. Your browser or machine may not support it.');
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShaderSource = document.getElementById('vertex-shader').textContent;
+        const fragmentShaderSource = document.getElementById('fragment-shader').textContent;
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+        }
+
+        const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+        const resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+        const timeUniformLocation = gl.getUniformLocation(program, "u_time");
+        const varietyMixUniformLocation = gl.getUniformLocation(program, "u_varietyMix");
+        const geodesicDensityUniformLocation = gl.getUniformLocation(program, "u_geodesicDensity");
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = [
+            -1, -1,
+             1, -1,
+            -1,  1,
+            -1,  1,
+             1, -1,
+             1,  1,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+                return true;
+            }
+            return false;
+        }
+
+        let rotationSpeed = 1;
+        const varietyMixSlider = document.getElementById('varietyMix');
+        const rotationSpeedSlider = document.getElementById('rotationSpeed');
+        const geodesicDensitySlider = document.getElementById('geodesicDensity');
+
+        function render(time) {
+            time *= 0.0001 * rotationSpeed;  // Convert to seconds and apply rotation speed
+
+            resizeCanvasToDisplaySize(gl.canvas);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(timeUniformLocation, time);
+            gl.uniform1f(varietyMixUniformLocation, parseFloat(varietyMixSlider.value));
+            gl.uniform1f(geodesicDensityUniformLocation, parseFloat(geodesicDensitySlider.value));
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            requestAnimationFrame(render);
+        }
+
+        varietyMixSlider.addEventListener('input', () => {
+            gl.uniform1f(varietyMixUniformLocation, parseFloat(varietyMixSlider.value));
+        });
+
+        rotationSpeedSlider.addEventListener('input', () => {
+            rotationSpeed = parseFloat(rotationSpeedSlider.value);
+        });
+
+        geodesicDensitySlider.addEventListener('input', () => {
+            gl.uniform1f(geodesicDensityUniformLocation, parseFloat(geodesicDensitySlider.value));
+        });
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Algebraic Variety Exploration</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+    in vec4 a_position;
+    void main() {
+        gl_Position = a_position;
+    }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+    precision highp float;
+    uniform vec2 iResolution;
+    uniform float iTime;
+    out vec4 fragColor;
+
+    #define MAX_STEPS 200
+    #define MAX_DIST 1000.0
+    #define SURF_DIST .001
+
+    // 4D rotation matrix
+    mat4 rotate4D(float theta, float phi) {
+        float cx = cos(theta), sx = sin(theta);
+        float cy = cos(phi), sy = sin(phi);
+        return mat4(
+            cx, -sx*sy, -sx*cy, 0,
+            sx,  cx*sy,  cx*cy, 0,
+            0,    -cy,     sy,  0,
+            0,     0,      0,   1
+        );
+    }
+
+    float smin(float a, float b, float k) {
+        float h = max(k - abs(a - b), 0.0) / k;
+        return min(a, b) - h * h * h * k * (1.0 / 6.0);
+    }
+
+    // Polynomial for first variety
+    float f1(vec4 p) {
+        float x = p.x, y = p.y, z = p.z, w = p.w;
+        return x*x + y*y - z*z - w*w;
+    }
+
+    // Polynomial for second variety
+    float f2(vec4 p) {
+        float x = p.x, y = p.y, z = p.z, w = p.w;
+        return x*y - z*w;
+    }
+
+    // Signed distance function for the intersection of two varieties
+    float sdf(vec4 p) {
+        return mix(abs(f1(p)), abs(f2(p)), 0.5) - .0618;
+    }
+
+    // Calculate gradient of f1
+    vec4 grad_f1(vec4 p) {
+        return vec4(2.0*p.x, 2.0*p.y, -2.0*p.z, -2.0*p.w);
+    }
+
+    // Calculate gradient of f2
+    vec4 grad_f2(vec4 p) {
+        return vec4(p.y, p.x, -p.w, -p.z);
+    }
+
+    // Raymarching function
+    float raymarch(vec3 ro, vec3 rd, float w) {
+        float dO = 0.0;
+        
+        for(int i = 0; i < MAX_STEPS; i++) {
+            vec3 p = ro + rd * dO;
+            vec4 p4 = vec4(p, w);
+            
+            float dS = sdf(p4);
+            dO += dS * 0.5;
+            
+            if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+        }
+        
+        return dO;
+    }
+
+    // Calculate normal
+    vec3 calcNormal(vec3 p, float w) {
+        vec2 e = vec2(0.001, 0);
+        vec3 n = vec3(
+            sdf(vec4(p+e.xyy, w)) - sdf(vec4(p-e.xyy, w)),
+            sdf(vec4(p+e.yxy, w)) - sdf(vec4(p-e.yxy, w)),
+            sdf(vec4(p+e.yyx, w)) - sdf(vec4(p-e.yyx, w))
+        );
+        return normalize(n);
+    }
+
+    void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
+        
+        vec3 ro = vec3(0, 0, -4);
+        vec3 rd = normalize(vec3(uv, 1));
+        
+        float t = iTime * 0.2;
+        mat4 rot = rotate4D(t, t * 0.7);
+        
+        float w = sin(t) * 0.5;
+        
+        vec4 ro4 = rot * vec4(ro, w);
+        vec4 rd4 = rot * vec4(rd, 0);
+        
+        float d = raymarch(ro4.xyz, rd4.xyz, ro4.w);
+        
+        vec3 col = vec3(0.1, 0.2, 0.3);
+        
+        if(d < MAX_DIST) {
+            vec4 p = vec4(ro4.xyz + rd4.xyz * d, ro4.w);
+            vec3 n = calcNormal(p.xyz, p.w);
+            
+            // Basic lighting
+            vec3 lightDir = normalize(vec3(1, 1, -1));
+            float diff = max(dot(n, lightDir), 0.0);
+            
+            // Calculate gradients
+            vec4 g1 = grad_f1(p);
+            vec4 g2 = grad_f2(p);
+            
+            // Check for singularities (where both gradients are close to zero)
+            float singularity = 1.0 - min(length(g1), length(g2));
+            
+            // Check for intersection (where both f1 and f2 are close to zero)
+            float intersection = 1.0 - max(abs(f1(p)), abs(f2(p)));
+            
+            // Visualize tangent space (using the angle between gradients)
+            float tangentSpace = abs(dot(normalize(g1), normalize(g2)));
+            
+            col = vec3(1, 0.5, 0.2) * diff;
+            col = mix(col, vec3(1, 0, 0), smoothstep(0.9, 1.0, singularity));  // Red for singularities
+            col = mix(col, vec3(0, 1, 0), smoothstep(0.9, 1.0, intersection)); // Green for intersections
+            col = mix(col, vec3(0, 0, 1), smoothstep(0.9, 1.0, tangentSpace));  // Blue for aligned gradients
+        }
+        
+        // Gamma correction
+        col = pow(col, vec3(0.4545));
+        
+        fragColor = vec4(col, 1.0);
+    }
+    </script>
+
+    <script>
+    let gl;
+    let program;
+    let positionAttributeLocation;
+    let resolutionUniformLocation;
+    let timeUniformLocation;
+    let startTime;
+
+    function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+
+    function createProgram(gl, vertexShader, fragmentShader) {
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+            return null;
+        }
+        return program;
+    }
+
+    function init() {
+        const canvas = document.getElementById('glCanvas');
+        gl = canvas.getContext('webgl2');
+        if (!gl) {
+            console.error('Unable to initialize WebGL. Your browser may not support it.');
+            return;
+        }
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const vertexShaderSource = document.getElementById('vertex-shader').text;
+        const fragmentShaderSource = document.getElementById('fragment-shader').text;
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        program = createProgram(gl, vertexShader, fragmentShader);
+
+        positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+        resolutionUniformLocation = gl.getUniformLocation(program, 'iResolution');
+        timeUniformLocation = gl.getUniformLocation(program, 'iTime');
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = new Float32Array([
+            -1, -1,
+             1, -1,
+            -1,  1,
+            -1,  1,
+             1, -1,
+             1,  1,
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+        startTime = Date.now();
+        render();
+    }
+
+    function render() {
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(program);
+
+        gl.enableVertexAttribArray(positionAttributeLocation);
+        gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+        gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+        gl.uniform1f(timeUniformLocation, (Date.now() - startTime) / 1000);
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        requestAnimationFrame(render);
+    }
+
+    window.onload = init;
+    window.onresize = function() {
+        gl.canvas.width = window.innerWidth;
+        gl.canvas.height = window.innerHeight;
+    };
+    </script>
+</body>
+</html>
