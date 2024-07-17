@@ -25,62 +25,66 @@
         uniform vec2 u_resolution;
         uniform float u_time;
 
-        out vec4 fragColor;
+        out vec4 outColor;
 
-        #define MAX_STEPS 200
+        #define MAX_STEPS 100
         #define MAX_DIST 100.0
-        #define SURF_DIST 0.16
+        #define SURF_DIST 0.1618033988749895
+        #define PHI 1.618033988749895
+        #define PI 3.141592653589793
+        #define E 2.718281828459045
 
-        // 4D to 3D projection
-        vec3 project4Dto3D(vec4 p) {
-            float w = 1.0 / (2.0 - p.w);
-            return vec3(p.xyz) * w;
+        // Smooth minimum (polynomial smooth step)
+        float smin(float a, float b, float k) {
+            float h = max(k - abs(a - b), 0.0) / k;
+            return min(a, b) - h * h * h * k * (1.0 / 6.0);
         }
 
-        // Hyperbolic distance in 4D
-        float hyperbolicDist4D(vec4 p) {
+        // Hyperbolic distance
+        float hyperbolicDist(vec3 p) {
             float len = length(p);
             len = clamp(len, 0.00001, 0.99999);
             return log((1.0 + len) / (1.0 - len));
         }
 
-        // 4D Mobius transformation
-        vec4 mobius4D(vec4 p) {
+        // Golden ratio based Mobius transformation
+        vec3 goldenMobius(vec3 p) {
             float r2 = dot(p, p);
-            float factor = 1.0 / (1.0 + r2);
-            return vec4(2.0 * p.xyz, r2 - 1.0) * factor;
+            float factor = 1.0 / (PHI + r2);
+            return vec3(PHI * p.xy, r2 - 1.0) * factor;
         }
 
-        // Distance function for 4D hyperbolic structure
+        // Golden spiral in 3D
+        vec3 goldenSpiral(float t) {
+            float r = pow(PHI, t / (2.0 * PI));
+            return vec3(r * cos(t), r * sin(t), t / (2.0 * PI));
+        }
+
+        // Distance function
         float getDistance(vec3 p) {
-            vec4 p4 = vec4(p, 0.0);
-
-            // Apply repeated 4D Mobius transformations
-            for (int i = 0; i < 5; i++) {
-                p4 = mobius4D(p4);
-                p4 = abs(p4);
-                if (p4.x < p4.y) p4.xy = p4.yx;
-                if (p4.x < p4.z) p4.xz = p4.zx;
-                if (p4.x < p4.w) p4.xw = p4.wx;
-                if (p4.y < p4.z) p4.yz = p4.zy;
-                if (p4.y < p4.w) p4.yw = p4.wy;
-                if (p4.z < p4.w) p4.zw = p4.wz;
-                p4 = p4 * 2.0 - 1.0;
+            // Apply golden ratio based hyperbolic transformation
+            p = goldenMobius(p);
+            
+            // Golden spiral distance estimation
+            float minDist = 1000.0;
+            for (int i = 0; i < 100; i++) {
+                float t = float(i) / 100.0 * 10.0 * PI;
+                vec3 spiralPoint = goldenSpiral(t + u_time);
+                spiralPoint = goldenMobius(spiralPoint); // Apply hyperbolic transformation to spiral
+                float dist = length(p - spiralPoint) - 0.1; // Thickness of the spiral
+                minDist = min(minDist, dist);
             }
-
-            // Project back to 3D
-            vec3 q = project4Dto3D(p4);
-
-            // Create a structure based on the {3,3,5} polytope
-            float d = length(q) - 0.5;
-            for (int i = 0; i < 5; i++) {
-                float angle = float(i) * 2.0 * 3.14159 / 5.0;
-                vec3 offset = 0.8 * vec3(cos(angle), sin(angle), 0.5);
-                d = min(d, length(q - offset) - 0.2);
-            }
-
-            // Apply hyperbolic distortion
-            return d * (1.0 - length(p) * length(p));
+            
+            // Combine with Fibonacci-like structure
+            float fibDist = min(
+                length(p - vec3(1, 1, 0)),
+                min(
+                    length(p - vec3(PHI, 0, 1)),
+                    length(p - vec3(0, PHI, PHI))
+                )
+            ) - PHI;
+            
+            return smin(minDist, fibDist, 0.6180339887) / PHI;
         }
 
         // Ray marching function
@@ -108,20 +112,18 @@
 
         // Main coloring function
         vec3 getColor(vec3 p) {
-            vec4 p4 = vec4(p, sin(u_time * 0.1)); // Adding time-based 4th dimension
-            float hd = hyperbolicDist4D(p4);
-
+            float hd = hyperbolicDist(p);
+            
             // Base color from hyperbolic distance
-            vec3 col = 0.5 + 0.5 * cos(hd * 2.0 + vec3(0, 2, 4));
-
-            // Add detail based on the structure's features
-            float detail = fract(hd * 10.0);
-            col = mix(col, vec3(1.0) - col, smoothstep(0.45, 0.55, detail));
-
-            // Enhance edges
-            float edge = length(fwidth(p4));
-            col = mix(col, vec3(1.0), smoothstep(0.0, 0.2, edge));
-
+            vec3 col = 0.5 + 0.5 * cos(hd * PHI + vec3(0, 2, 4));
+            
+            // Add detail based on the golden spiral structure
+            float spiralDist = getDistance(p);
+            col = mix(col, vec3(1.0, PHI - 1.0, 1.0 / PHI), smoothstep(0.1, 0.0, spiralDist));
+            
+            // Add interference-like patterns based on golden ratio
+            col += 0.1 * sin(p * PHI * 5.0 + u_time);
+            
             return col;
         }
 
@@ -153,7 +155,7 @@
                 vec3 n = getNormal(p);
 
                 // Lighting calculation
-                vec3 lightDir = normalize(vec3(1, 2, -3));
+                vec3 lightDir = normalize(vec3(1, PHI, -1));
                 float diff = max(dot(n, lightDir), 0.0);
 
                 col = getColor(p);
@@ -167,7 +169,7 @@
             col = pow(col, vec3(0.4545));
             col = smoothstep(0.0, 1.0, col);
 
-            fragColor = vec4(col, 1.0);
+            outColor = vec4(col, 1.0);
         }
     </script>
 
@@ -235,7 +237,7 @@
         }
 
         function render(time) {
-            time *= 0.0002;  // Convert to seconds
+            time *= 0.002;  // Convert to seconds
 
             resizeCanvasToDisplaySize(gl.canvas);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
