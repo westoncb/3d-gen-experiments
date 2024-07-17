@@ -48,9 +48,9 @@
     uniform float u_varietyMix;
     uniform float u_geodesicDensity;
 
-    #define MAX_STEPS 200
-    #define MAX_DIST 100.0
-    #define SURF_DIST 0.001
+    #define MAX_STEPS 100
+    #define MAX_DIST 150.0
+    #define SURF_DIST .0001
 
     // 4D rotation matrix
     mat4 rotate4D(float t) {
@@ -95,7 +95,38 @@
         vec4 q = mobius4D(p);
         float d1 = abs(f1(q));
         float d2 = abs(f2(q));
-        return smin(d1, d2, 1.618033988749895) / (d2 * d1);
+
+        return mix(d1, d2, d1 * d2) * length(q) / length(p);
+        //return mix(d1, d2, length(q) / length(p)) / length(p) / length(q);
+        //return smoothstep(d1, d2, length(q) * (d1 - d2)) / length(p) * (d1 - d2);
+        //return smoothstep(d1, d2, length(p) * (d2 - d1)) / length(q) * (d2 - d1);
+        //return smoothstep(d1, d2, length(p) * (d2 - d1)) + length(q) * (d2 - d1);
+        //return smoothstep(d1, d2, length(p) * d2) + length(q) * (d2 - d1);
+        //return smoothstep(d1, d2, length(p) * d2) - length(q) * (d2 - d1);
+        //return smoothstep(d1, d2, length(p) * d2) - length(q) * (d1 + d2);
+        //return smoothstep(d1, d2, length(p) * d2) - length(q) * d1;
+        //return smoothstep(d1, d2, length(p) * d2) + length(q) * d1;
+        //return smoothstep(d1, d2, length(q) * d1) + length(q) * d2;
+        //return mix(d1, d2, length(q)) * length(p) * (d1 + d2);
+        //return mix(d1, d2, length(q)) * length(p);
+        //return mix(d1, d2, length(q) + d2) * length(p);
+        //return mix(d1, d2, length(q) / d2) + length(p) * d1;
+        //return mix(d1, d2, length(q) / d2) + length(p) / d1;
+        //return smoothstep(d1, d2, length(q) * d2) / length(p) * d1;
+        //return mix(d1, d2, length(q)) / length(p);
+        //return mix(d1, d2, 0.5) / length(p);
+        //return mix(d1, d2, 0.5) / length(q);
+        //return smoothstep(d1, d2, d2 / d1) * (d1 - d2);
+        //return smin(d1, d2, d2 / d1) * (d1 - d2);
+        //return mix(d1, d2, d1 * d2) / (d2 - d1);
+        //return mix(d1, d2, d1 * d2) / (d1 - d2);
+        //return mix(d1, d2, d1 * d2) * 1.618033988749895;
+        //return mix(d1, d2, d1 * d2) / 1.618033988749895;
+        //return smin(d1, d2, .618033988749895) / (d2 * d1);
+        //return smin(d1, d2, 1.) / (d2 * d1);
+        //return smin(d1, d2, 1.618033988749895) / (d2 * d1);
+        //return smoothstep(d1, d2, .618033988749895) / (d2 - d1);
+        //return smoothstep(d1, d2, .618033988749895) / (d2 + d1);
     }
 
     // Ray marching
