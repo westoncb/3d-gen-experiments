@@ -96,7 +96,7 @@
         float d1 = abs(f1(q));
         float d2 = abs(f2(q));
 
-        return mix(d1, d2, d1 * d2) * length(q) / length(p);
+        //return mix(d1, d2, d1 * d2) * length(q) / length(p);
         //return mix(d1, d2, length(q) / length(p)) / length(p) / length(q);
         //return smoothstep(d1, d2, length(q) * (d1 - d2)) / length(p) * (d1 - d2);
         //return smoothstep(d1, d2, length(p) * (d2 - d1)) / length(q) * (d2 - d1);
@@ -124,7 +124,8 @@
         //return mix(d1, d2, d1 * d2) / 1.618033988749895;
         //return smin(d1, d2, .618033988749895) / (d2 * d1);
         //return smin(d1, d2, 1.) / (d2 * d1);
-        //return smin(d1, d2, 1.618033988749895) / (d2 * d1);
+        //return smin(d1, d2, 1.618033988749895) / (d2 * d1); **
+        return smin(d1, d2, 1.2) / (d2 * d1);
         //return smoothstep(d1, d2, .618033988749895) / (d2 - d1);
         //return smoothstep(d1, d2, .618033988749895) / (d2 + d1);
     }
