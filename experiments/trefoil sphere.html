@@ -30,8 +30,8 @@ out vec4 fragColor;
 #define PHI 1.618033988749895
 #define PI 3.14159265358979
 #define E 2.718281828459045
-#define MAX_STEPS 256
-#define MAX_DIST 20.0
+#define MAX_STEPS 100
+#define MAX_DIST 1000.0
 #define SURF_DIST .618033988749895
 
 float smin(float a, float b, float k) {
@@ -46,7 +46,7 @@ vec3 trefoil(float t) {
         cos(t) - 2.0 * cos(2.0 * t),
         -sin(3.0 * t)
     //) / PI;
-    ) * PHI;
+    ) * E;
 }
 
 // Hyperbolic distance
@@ -160,7 +160,7 @@ void main() {
         col *= diff * 0.8 + 0.2;
 
         // Fade out based on distance
-        col *= 1.0 - d / (MAX_DIST * PHI);
+        col *= 1.0 - d / (MAX_DIST);
     }
 
     // Gamma correction and contrast enhancement
