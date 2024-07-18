@@ -46,7 +46,7 @@ vec3 trefoil(float t) {
         cos(t) - 2.0 * cos(2.0 * t),
         -sin(3.0 * t)
     //) / PI;
-    ) / PI;
+    ) * PHI;
 }
 
 // Hyperbolic distance
@@ -129,7 +129,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
     // Camera setup
-    vec3 ro = vec3(0, 0, 2.);
+    vec3 ro = vec3(0, 0, 16.);
     vec3 rd = normalize(vec3(uv, -1.));
 
     // Rotate camera
@@ -160,7 +160,7 @@ void main() {
         col *= diff * 0.8 + 0.2;
 
         // Fade out based on distance
-        col *= 1.0 - d / MAX_DIST;
+        col *= 1.0 - d / (MAX_DIST * PHI);
     }
 
     // Gamma correction and contrast enhancement
