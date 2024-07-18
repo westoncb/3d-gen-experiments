@@ -27,9 +27,12 @@ uniform float u_time;
 
 out vec4 fragColor;
 
+#define PHI 1.618033988749895
+#define PI 3.14159265358979
+#define E 2.718281828459045
 #define MAX_STEPS 256
 #define MAX_DIST 20.0
-#define SURF_DIST .2718
+#define SURF_DIST .618033988749895
 
 float smin(float a, float b, float k) {
     float h = max(k - abs(a - b), 0.0) / k;
@@ -42,7 +45,8 @@ vec3 trefoil(float t) {
         sin(t) + 2.0 * sin(2.0 * t),
         cos(t) - 2.0 * cos(2.0 * t),
         -sin(3.0 * t)
-    ) * 0.5;
+    //) / PI;
+    ) / PI;
 }
 
 // Hyperbolic distance
@@ -76,9 +80,9 @@ float getDistance(vec3 p) {
     
     // Combine with hyperbolic space structure
     float hypDist = hyperbolicDist(p);
-    float spaceDist = sin(hypDist * 5.0 + u_time) * 0.1;
+    float spaceDist = sin(hypDist * 5. + u_time) * 0.1;
     
-    return mix(minDist, spaceDist, spaceDist / hypDist) * 2.718;
+    return smoothstep(minDist, spaceDist, spaceDist / hypDist);
 }
 
 // Ray marching function
@@ -125,8 +129,8 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
     // Camera setup
-    vec3 ro = vec3(0, 0, -3);
-    vec3 rd = normalize(vec3(uv, 1));
+    vec3 ro = vec3(0, 0, 2.);
+    vec3 rd = normalize(vec3(uv, -1.));
 
     // Rotate camera
     float t = u_time * 0.1;
@@ -135,8 +139,8 @@ void main() {
         0, 1, 0,
         -sin(t), 0, cos(t)
     );
-    ro *= rot;
-    rd *= rot;
+    //ro *= rot;
+    //rd *= rot;
 
     // Perform ray marching
     float d = rayMarch(ro, rd);
