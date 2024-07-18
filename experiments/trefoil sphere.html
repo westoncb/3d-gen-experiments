@@ -82,7 +82,7 @@ float getDistance(vec3 p) {
     float hypDist = hyperbolicDist(p);
     float spaceDist = sin(hypDist * 5. + u_time) * .1;
     
-    return mix(hypDist, spaceDist, spaceDist / minDist) * PHI;
+    return mix(minDist, spaceDist, spaceDist * hypDist) * PI * PHI * E;
 }
 
 // Ray marching function
@@ -235,7 +235,7 @@ void main() {
         }
 
         function render(time) {
-            time *= 0.00002;  // Convert to seconds
+            time *= 0.001;  // Convert to seconds
 
             resizeCanvasToDisplaySize(gl.canvas);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
