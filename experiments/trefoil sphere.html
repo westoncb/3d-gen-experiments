@@ -46,7 +46,7 @@ vec3 trefoil(float t) {
         cos(t) - 2.0 * cos(2.0 * t),
         -sin(3.0 * t)
     //) / PI;
-    ) * E;
+    ) * PI * 2.;
 }
 
 // Hyperbolic distance
@@ -80,9 +80,9 @@ float getDistance(vec3 p) {
     
     // Combine with hyperbolic space structure
     float hypDist = hyperbolicDist(p);
-    float spaceDist = sin(hypDist * 5. + u_time) * 0.1;
+    float spaceDist = sin(hypDist * 5. + u_time) * .1;
     
-    return smoothstep(minDist, spaceDist, spaceDist / hypDist);
+    return mix(hypDist, spaceDist, spaceDist / minDist) * PHI;
 }
 
 // Ray marching function
@@ -129,7 +129,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
     // Camera setup
-    vec3 ro = vec3(0, 0, 16.);
+    vec3 ro = vec3(0, 0, 3.);
     vec3 rd = normalize(vec3(uv, -1.));
 
     // Rotate camera
@@ -235,7 +235,7 @@ void main() {
         }
 
         function render(time) {
-            time *= 0.002;  // Convert to seconds
+            time *= 0.00002;  // Convert to seconds
 
             resizeCanvasToDisplaySize(gl.canvas);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
