@@ -27,7 +27,7 @@ uniform float u_time;
 
 #define MAX_STEPS 100
 #define MAX_DIST 10000.0
-#define SURF_DIST 0.01
+#define SURF_DIST .99
 
 // Hyperbolic distance function
 float hyperbolicDist(vec3 p) {
@@ -83,7 +83,7 @@ float getDistance(vec3 p) {
     }
 
     // Apply hyperbolic distortion
-    return d * (1.0 - length(p) * length(p)) * 7.;
+    return d * (1.0 - length(p) * length(p)) * 2. + .99;
 }
 
 // Ray marching function
@@ -142,7 +142,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
     // Camera setup
-    vec3 ro = vec3(0, 0, -3);
+    vec3 ro = vec3(0, 0, -1.);
     vec3 rd = normalize(vec3(uv, 1));
 
     // Rotate camera
@@ -181,7 +181,7 @@ void main() {
         // Add enhanced geodesic visualization
         float geo = geodesic(p);
         vec3 geoColor = mix(vec3(0.2, 0.5, 1.0), vec3(1.0, 0.5, 0.2), smoothstep(0.0, 5.0, hd));
-        col = mix(col, geoColor, geo * 0.9);
+        //col = mix(col, geoColor, geo * 0.9);
 
         // Fade out based on distance
         col *= 1.0 - d / MAX_DIST;
@@ -273,7 +273,7 @@ void main() {
         }
 
         function render(time) {
-            time *= 0.00003;  // Convert to seconds
+            time *= 0.00001;  // Convert to seconds
 
             resizeCanvasToDisplaySize(gl.canvas);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
