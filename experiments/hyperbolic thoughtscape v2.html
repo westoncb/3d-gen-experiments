@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyperbolic Thoughtspace Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <canvas id="shaderCanvas"></canvas>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform vec2 u_resolution;
+        uniform float u_time;
+
+        const float PI = 3.14159265359;
+
+        // Poincaré disk model mapping
+        vec2 poincare_to_klein(vec2 z) {
+            return 2.0 * z / (1.0 + dot(z, z));
+        }
+
+        vec2 klein_to_poincare(vec2 z) {
+            float d = sqrt(1.0 - dot(z, z));
+            return z / (1.0 + d);
+        }
+
+        // Hyperbolic rotation
+        vec2 hyperbolic_rotate(vec2 z, float theta) {
+            float s = sin(theta);
+            float c = cos(theta);
+            return vec2(
+                (z.x * c + z.y * s) / (1.0 + z.x * s - z.y * c),
+                (-z.x * s + z.y * c) / (1.0 + z.x * s - z.y * c)
+            );
+        }
+
+        // Distance in Poincaré disk model
+        float hyperbolic_distance(vec2 z1, vec2 z2) {
+            return acosh(1.0 + 2.0 * length(z1 - z2) * length(z1 - z2) / ((1.0 - dot(z1, z1)) * (1.0 - dot(z2, z2))));
+        }
+
+        // Semantic potential field
+        float semantic_potential(vec2 z) {
+            vec2 k = poincare_to_klein(z);
+            return 1.0 / (1.0 - dot(k, k));
+        }
+
+        void main() {
+            vec2 st = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+            
+            // Apply hyperbolic rotation
+            st = hyperbolic_rotate(st, u_time * 0.1);
+            
+            // Calculate semantic potential
+            float potential = semantic_potential(st);
+            
+            // Dynamic dimension unfolding
+            float dim_factor = tanh(u_time * 0.1) * 0.5 + 0.5;
+            
+            // Color based on hyperbolic distance from origin and semantic potential
+            float dist = hyperbolic_distance(st, vec2(0.0));
+            vec3 color = vec3(
+                0.5 + 0.5 * sin(dist * 5.0 + u_time),
+                0.5 + 0.5 * sin(potential * 2.0 - u_time),
+                0.5 + 0.5 * sin(dist * 3.0 - potential * 2.0 + u_time)
+            );
+            
+            // Apply dimension unfolding effect
+            color = mix(vec3(length(st)), color, dim_factor);
+            
+            // Quantum-inspired fluctuations
+            color += 0.05 * vec3(
+                sin(st.x * 100.0 + u_time * 5.0),
+                sin(st.y * 100.0 - u_time * 3.0),
+                sin((st.x + st.y) * 50.0 + u_time * 4.0)
+            );
+            
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+    <script>
+        const canvas = document.getElementById('shaderCanvas');
+        const renderer = new THREE.WebGLRenderer({canvas});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            fragmentShader: document.getElementById('fragmentShader').textContent,
+            uniforms: {
+                u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                u_time: { value: 0 }
+            }
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            material.uniforms.u_time.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

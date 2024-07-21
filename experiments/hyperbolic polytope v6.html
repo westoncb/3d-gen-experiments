@@ -25,9 +25,10 @@ precision highp float;
 uniform vec2 u_resolution;
 uniform float u_time;
 
+#define PHI 1.618033988749895
 #define MAX_STEPS 100
 #define MAX_DIST 10000.0
-#define SURF_DIST .99
+#define SURF_DIST 1.
 
 // Hyperbolic distance function
 float hyperbolicDist(vec3 p) {
@@ -142,7 +143,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
     // Camera setup
-    vec3 ro = vec3(0, 0, -1.);
+    vec3 ro = vec3(0, 0, -1024.);
     vec3 rd = normalize(vec3(uv, 1));
 
     // Rotate camera
@@ -273,7 +274,7 @@ void main() {
         }
 
         function render(time) {
-            time *= 0.00001;  // Convert to seconds
+            time *= 0.001;  // Convert to seconds
 
             resizeCanvasToDisplaySize(gl.canvas);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
