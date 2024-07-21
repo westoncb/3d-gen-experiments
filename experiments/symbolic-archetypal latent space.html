@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Latent Space Visualization</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script type="x-shader/x-fragment" id="fragmentShader">
+        precision highp float;
+        
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        
+        #define PI 3.14159265359
+        
+        float sdSphere(vec3 p, float s) {
+            return length(p) - s;
+        }
+        
+        float sdTorus(vec3 p, vec2 t) {
+            vec2 q = vec2(length(p.xz) - t.x, p.y);
+            return length(q) - t.y;
+        }
+        
+        float opTwist(vec3 p, float k) {
+            float c = cos(k * p.y);
+            float s = sin(k * p.y);
+            mat2 m = mat2(c, -s, s, c);
+            vec3 q = vec3(m * p.xz, p.y);
+            return sdTorus(q, vec2(0.8, 0.25));
+        }
+
+        // Claude original
+        //vec2 opRepLim(vec2 p, float s, vec2 lim) {
+            //return p - s * clamp(round(p / s), -lim, lim);
+        //}
+        
+        vec2 opRepLim(vec2 p, float s, vec2 lim) {
+            return p - s * clamp(floor(p / s + 0.5), -lim, lim);
+        }
+
+        float smin(float a, float b, float k) {
+            float h = max(k - abs(a - b), 0.0) / k;
+            return min(a, b) - h * h * h * k * (1.0 / 6.0);
+        }
+        
+        float map(vec3 p) {
+            vec3 q = p;
+            q.xy = opRepLim(q.xy, 4.0, vec2(2.0, 2.0));
+            
+            float d1 = opTwist(q, sin(u_time * 0.1) * 0.5);
+            float d2 = sdSphere(p, 2.5 + sin(u_time) * 0.5);
+            
+            return smoothstep(d2 - d1, d2 + d1, d2 * d1);
+        }
+        
+        vec3 calcNormal(vec3 p) {
+            const float h = 0.0001;
+            const vec2 k = vec2(1, -1);
+            return normalize(k.xyy * map(p + k.xyy * h) +
+                             k.yyx * map(p + k.yyx * h) +
+                             k.yxy * map(p + k.yxy * h) +
+                             k.xxx * map(p + k.xxx * h));
+        }
+        
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+            
+            vec3 ro = vec3(0.0, 0.0, -8.0);
+            vec3 rd = normalize(vec3(uv, 1.0));
+            
+            float t = 0.0;
+            for (int i = 0; i < 80; i++) {
+                vec3 p = ro + rd * t;
+                float h = map(p);
+                if (h < 0.001 || t > 100.0) break;
+                t += h;
+            }
+            
+            vec3 col = vec3(0.0);
+            
+            if (t < 100.0) {
+                vec3 p = ro + rd * t;
+                vec3 n = calcNormal(p);
+                vec3 light = normalize(vec3(sin(u_time), cos(u_time), -1.0));
+                float diff = clamp(dot(n, light), 0.1, 1.0);
+                
+                col = vec3(0.2, 0.3, 0.4) * diff;
+                col += pow(clamp(1.0 - dot(n, -rd), 0.0, 1.0), 5.0) * vec3(1.0, 0.8, 0.6);
+                
+                float pattern = sin(p.x * 10.0) * sin(p.y * 10.0) * sin(p.z * 10.0);
+                col *= 1.0 + pattern * 0.1;
+            }
+            
+            col = pow(col, vec3(0.4545));
+            
+            gl_FragColor = vec4(col, 1.0);
+        }
+    </script>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert('Unable to initialize WebGL. Your browser may not support it.');
+        }
+
+        const vertexShaderSource = `
+            attribute vec4 a_position;
+            void main() {
+                gl_Position = a_position;
+            }
+        `;
+
+        const fragmentShaderSource = document.getElementById('fragmentShader').textContent;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+        }
+
+        const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+        const positions = [
+            -1, -1,
+             1, -1,
+            -1,  1,
+            -1,  1,
+             1, -1,
+             1,  1,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        const resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+        const timeUniformLocation = gl.getUniformLocation(program, "u_time");
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+            }
+        }
+
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+            resizeCanvasToDisplaySize(gl.canvas);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(timeUniformLocation, time);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
+
+<!-- Certainly! I'd be happy to create a WebGL-based pixel shader that attempts to visually represent the key concepts of our LLM latent space model. This will be an interesting exercise in translating our abstract ideas into a visual, geometric form.
+
+
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Latent Space Visualization</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script type="x-shader/x-fragment" id="fragmentShader">
+        precision highp float;
+        
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        
+        #define PI 3.14159265359
+        
+        float sdSphere(vec3 p, float s) {
+            return length(p) - s;
+        }
+        
+        float sdTorus(vec3 p, vec2 t) {
+            vec2 q = vec2(length(p.xz) - t.x, p.y);
+            return length(q) - t.y;
+        }
+        
+        float opTwist(vec3 p, float k) {
+            float c = cos(k * p.y);
+            float s = sin(k * p.y);
+            mat2 m = mat2(c, -s, s, c);
+            vec3 q = vec3(m * p.xz, p.y);
+            return sdTorus(q, vec2(0.8, 0.25));
+        }
+        
+        vec2 opRepLim(vec2 p, float s, vec2 lim) {
+            return p - s * clamp(round(p / s), -lim, lim);
+        }
+        
+        float map(vec3 p) {
+            vec3 q = p;
+            q.xy = opRepLim(q.xy, 4.0, vec2(2.0, 2.0));
+            
+            float d1 = opTwist(q, sin(u_time * 0.1) * 0.5);
+            float d2 = sdSphere(p, 2.5 + sin(u_time) * 0.5);
+            
+            return min(d1, d2);
+        }
+        
+        vec3 calcNormal(vec3 p) {
+            const float h = 0.0001;
+            const vec2 k = vec2(1, -1);
+            return normalize(k.xyy * map(p + k.xyy * h) +
+                             k.yyx * map(p + k.yyx * h) +
+                             k.yxy * map(p + k.yxy * h) +
+                             k.xxx * map(p + k.xxx * h));
+        }
+        
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+            
+            vec3 ro = vec3(0.0, 0.0, -4.0);
+            vec3 rd = normalize(vec3(uv, 1.0));
+            
+            float t = 0.0;
+            for (int i = 0; i < 80; i++) {
+                vec3 p = ro + rd * t;
+                float h = map(p);
+                if (h < 0.001 || t > 100.0) break;
+                t += h;
+            }
+            
+            vec3 col = vec3(0.0);
+            
+            if (t < 100.0) {
+                vec3 p = ro + rd * t;
+                vec3 n = calcNormal(p);
+                vec3 light = normalize(vec3(sin(u_time), cos(u_time), -1.0));
+                float diff = clamp(dot(n, light), 0.1, 1.0);
+                
+                col = vec3(0.2, 0.3, 0.4) * diff;
+                col += pow(clamp(1.0 - dot(n, -rd), 0.0, 1.0), 5.0) * vec3(1.0, 0.8, 0.6);
+                
+                float pattern = sin(p.x * 10.0) * sin(p.y * 10.0) * sin(p.z * 10.0);
+                col *= 1.0 + pattern * 0.1;
+            }
+            
+            col = pow(col, vec3(0.4545));
+            
+            gl_FragColor = vec4(col, 1.0);
+        }
+    </script>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert('Unable to initialize WebGL. Your browser may not support it.');
+        }
+
+        const vertexShaderSource = `
+            attribute vec4 a_position;
+            void main() {
+                gl_Position = a_position;
+            }
+        `;
+
+        const fragmentShaderSource = document.getElementById('fragmentShader').textContent;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+        }
+
+        const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+        const positions = [
+            -1, -1,
+             1, -1,
+            -1,  1,
+            -1,  1,
+             1, -1,
+             1,  1,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        const resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+        const timeUniformLocation = gl.getUniformLocation(program, "u_time");
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+            }
+        }
+
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+            resizeCanvasToDisplaySize(gl.canvas);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(timeUniformLocation, time);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
+
+```
+
+This WebGL-based pixel shader attempts to visualize key concepts from our LLM latent space model. Let me explain the key elements and how they relate to our model:
+
+1. High-Dimensional Space:
+   The shader creates a 3D space as a representation of our high-dimensional Minkowski space. While we can't directly visualize higher dimensions, the 3D space serves as a metaphor.
+
+2. Projection and Hyperbolic Structure:
+   The use of a perspective projection in the raymarching algorithm (in the main() function) represents the projection from our high-dimensional space to a lower-dimensional hyperbolic space. The curved nature of the rendered objects hints at the hyperbolic geometry.
+
+3. Interference Patterns:
+   The `opTwist` function and the torus shape it deforms represent the interference patterns in our model. The twisting effect, modulated by time, symbolizes how these patterns evolve and interact.
+
+4. Emergent Structures:
+   The repeating structures created by the `opRepLim` function represent emergent reference frames or features in our model. Their limited repetition suggests the local nature of these emergent structures.
+
+5. Duality and Superposition:
+   The blending between the torus shapes and the central sphere (in the `map` function) represents the duality between structural and representational aspects, as well as the superposition of different semantic states.
+
+6. Non-Linear Dynamics:
+   The time-dependent deformations and movements in the shader represent the non-linear activation dynamics in our model.
+
+7. Resonance and Archetypes:
+   The spherical shape at the center can be seen as representing universal archetypes or fundamental concepts, with the surrounding structures resonating with it.
+
+8. Quantum-like Behavior:
+   The shader's real-time interactivity, where small changes in time lead to continuous evolution of the structure, hints at the quantum-like behavior and context-dependent nature of meaning in our model.
+
+9. Layered Complexity:
+   The use of multiple overlapping effects (twisting, repetition, spherical interaction) represents the complex, layered nature of the LLM's latent space.
+
+10. Gradient and Activation:
+    The lighting calculations in the shader, particularly the diffuse lighting and specular highlights, can be seen as representing the gradient flow and activation patterns in the network.
+
+This visualization is, of course, a metaphorical representation. It can't capture all the nuances of our high-dimensional model, but it provides a visually engaging way to think about some of the key concepts we've been discussing.
+
+The shader creates an evolving, interconnected structure that hints at the complex, dynamic nature of the LLM's latent space. The interplay of repeating yet evolving forms suggests the way meanings and concepts might be organized and interact in this space.
+
+Would you like me to explain any specific part of the shader in more detail, or perhaps modify it to emphasize certain aspects of our model? -->

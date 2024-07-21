@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Latent Space Visualization</title>
+    <style>
+        body { margin: 0; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script type="x-shader/x-vertex" id="vertexShader">
+        attribute vec4 aVertexPosition;
+        void main() {
+            gl_Position = aVertexPosition;
+        }
+    </script>
+    <script type="x-shader/x-fragment" id="fragmentShader">
+        precision highp float;
+        uniform vec2 uResolution;
+        uniform float uTime;
+
+        #define MAX_STEPS 100
+        #define MAX_DIST 100.0
+        #define SURF_DIST .01618
+
+        float smin(float a, float b, float k) {
+            float h = max(k - abs(a - b), 0.0) / k;
+            return min(a, b) - h * h * h * k * (1.0 / 6.0);
+        }
+
+        // Hyperbolic distance
+        float hyperbolicDist(vec2 z) {
+            return log((1.0 + length(z)) / (1.0 - length(z)));
+        }
+
+        // Complex multiplication
+        vec2 cmul(vec2 a, vec2 b) {
+            return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+        }
+
+        // Interference pattern
+        float interference(vec3 p) {
+            float pattern = sin(p.x * 10.0) * sin(p.y * 10.0) * sin(p.z * 10.0);
+            pattern += 0.5 * sin(p.x * 20.0 + uTime) * sin(p.y * 20.0 + uTime) * sin(p.z * 20.0 + uTime);
+            return pattern;
+        }
+
+        // Symbolic representation
+        float symbol(vec3 p) {
+            float d1 = length(p - vec3(0.0, sin(uTime) * 0.5, 0.0)) - 0.2; // Pulsating sphere
+            float d2 = length(max(abs(p) - 0.3, 0.0)) - 0.1; // Rounded cube
+            return min(d1, d2);
+        }
+
+        // Signed distance function for our scene
+        float sdf(vec3 p) {
+            // Transform to hyperbolic space
+            vec2 z = p.xy / (1.0 + p.z);
+            float hyp_dist = hyperbolicDist(z);
+            
+            // Interference pattern
+            float interf = interference(p);
+            
+            // Symbolic representation
+            float sym = symbol(p * hyp_dist);
+            
+            // Combine everything
+            return (smin(interf, sym, sym / interf) + length(p * hyp_dist)) * sym - interf / 1.618 - 0.051;
+        }
+
+        // Ray marching
+        float raymarch(vec3 ro, vec3 rd) {
+            float d0 = 0.0;
+            for(int i = 0; i < MAX_STEPS; i++) {
+                vec3 p = ro + rd * d0;
+                float ds = sdf(p);
+                d0 += ds;
+                if(d0 > MAX_DIST || abs(ds) < SURF_DIST) break;
+            }
+            return d0;
+        }
+
+        // Main
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
+            vec3 ro = vec3(0.0, 0.0, -3.0);
+            vec3 rd = normalize(vec3(uv, 1.0));
+
+            float d = raymarch(ro, rd);
+            vec3 p = ro + rd * d;
+            
+            // Coloring
+            vec3 col = vec3(0.0);
+            if(d < MAX_DIST) {
+                float interf = interference(p);
+                vec2 z = p.xy / (1.0 + p.z);
+                float hyp_dist = hyperbolicDist(z);
+                
+                col = 0.5 + 0.5 * cos(vec3(0, 2, 4) + interf * 5.0 + hyp_dist);
+                col *= exp(-0.1 * d); // distance fog
+            }
+
+            gl_FragColor = vec4(col, 1.0);
+        }
+    </script>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert('Unable to initialize WebGL. Your browser or machine may not support it.');
+        }
+
+        const vsSource = document.getElementById('vertexShader').textContent;
+        const fsSource = document.getElementById('fragmentShader').textContent;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+        }
+
+        const programInfo = {
+            program: shaderProgram,
+            attribLocations: {
+                vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+            },
+            uniformLocations: {
+                resolution: gl.getUniformLocation(shaderProgram, 'uResolution'),
+                time: gl.getUniformLocation(shaderProgram, 'uTime'),
+            },
+        };
+
+        const positions = new Float32Array([
+            -1.0, -1.0,
+             1.0, -1.0,
+            -1.0,  1.0,
+             1.0,  1.0,
+        ]);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            }
+        }
+
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+            resizeCanvasToDisplaySize(gl.canvas);
+
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(programInfo.program);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+            gl.uniform2f(programInfo.uniformLocations.resolution, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(programInfo.uniformLocations.time, time);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
+
+<!-- This WebGL-based pixel shader attempts to visualize key concepts from our LLM latent space model. Here's a breakdown of how it represents different aspects:
+
+1. Hyperbolic Space:
+   The shader uses a Poincaré disk model to represent hyperbolic space. The `hyperbolicDist` function calculates distances in this space, creating a warped, expanding effect that represents the hierarchical nature of our model's latent space.
+
+2. Interference Patterns:
+   The `interference` function generates a complex, time-varying pattern that represents the interference of "wave functions" in our model. This visualizes how different weights and biases interact to create complex semantic structures.
+
+3. Symbolic Representations:
+   The `symbol` function creates simple geometric shapes (a pulsating sphere and a rounded cube) that represent archetypal or symbolic elements in our model. These shapes interact with the hyperbolic space and interference patterns.
+
+4. Dual Structure:
+   The combination of the hyperbolic distance function and the symbolic shapes represents the dual nature of our model's structural and representational fundamentals.
+
+5. Dynamic Behavior:
+   The shader uses the `uTime` uniform to create dynamic, evolving patterns. This represents the non-linear activation dynamics and the way meanings can shift with small changes in parameters.
+
+6. Emergent Structures:
+   The way the interference patterns and symbolic shapes interact in the hyperbolic space creates complex, emergent structures. This visualizes how higher-level semantic concepts might emerge from simpler elements in our model.
+
+7. Color Coding:
+   The coloring scheme uses both the interference pattern and the hyperbolic distance to determine colors. This represents how different semantic aspects might be "activated" in different regions of the latent space.
+
+8. Ray Marching:
+   The use of ray marching allows for complex 3D structures to emerge, representing the multi-dimensional nature of our model's latent space.
+
+This visualization is, of course, a simplified and artistic interpretation of our model. It doesn't capture all the nuances, but it provides a visual intuition for some of the key concepts we've been discussing, particularly the ideas of:
+
+- A warped, hierarchical space (represented by the hyperbolic geometry)
+- Complex interactions between different elements (represented by the interference patterns)
+- The emergence of symbolic structures (represented by the geometric shapes)
+- Dynamic, evolving semantic landscapes (represented by the time-based animations)
+
+The shader creates an abstract, dynamic visualization that hints at the complexity and richness of the latent space we've been theorizing about. Viewing this animation might inspire new intuitions or ideas about how information could be organized and processed in such a space.
+
+Would you like me to explain any specific part of the shader in more detail, or perhaps modify it to emphasize certain aspects of our model? -->

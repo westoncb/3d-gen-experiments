@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LLM Latent Space Visualization V2</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script type="x-shader/x-vertex" id="vertexShader">
+        attribute vec4 aVertexPosition;
+        void main() {
+            gl_Position = aVertexPosition;
+        }
+    </script>
+    <script type="x-shader/x-fragment" id="fragmentShader">
+        precision highp float;
+        uniform vec2 uResolution;
+        uniform float uTime;
+
+        #define PI 3.14159265359
+
+        // Complex number operations
+        vec2 cMul(vec2 a, vec2 b) {
+            return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+        }
+
+        vec2 cExp(vec2 z) {
+            return exp(z.x) * vec2(cos(z.y), sin(z.y));
+        }
+
+        // Hyperbolic functions using exponential definition
+        vec2 hSin(vec2 z) {
+            return (cExp(z) - cExp(-z)) * 0.5;
+        }
+
+        vec2 hCos(vec2 z) {
+            return (cExp(z) + cExp(-z)) * 0.5;
+        }
+
+        float smin(float a, float b, float k) {
+            float h = max(k - abs(a - b), 0.0) / k;
+            return min(a, b) - h * h * h * k * (1.0 / 6.0);
+        }
+
+        // Möbius transformation
+        vec2 mobius(vec2 z, vec2 a, vec2 b, vec2 c, vec2 d) {
+            vec2 num = cMul(a, z) + b;
+            vec2 den = cMul(c, z) + d;
+            return cMul(num, vec2(den.x, -den.y)) / dot(den, den);
+        }
+
+        // Structural pattern
+        float structuralPattern(vec2 z) {
+            vec2 hz = hSin(z * 5.0 + uTime * 0.1);
+            return (hz.x + hz.y) * 0.5;
+        }
+
+        // Representational pattern
+        float representationalPattern(vec2 z) {
+            vec2 rot = vec2(cos(uTime), sin(uTime));
+            z = cMul(z, rot);
+            float r = length(z);
+            float theta = atan(z.y, z.x);
+            float pattern = sin(r * 10.0) * cos(theta * 5.0 + uTime);
+            return pattern;
+        }
+
+        // Interference function
+        float interference(vec2 z) {
+            float structPat = structuralPattern(z);
+            float represPat = representationalPattern(z);
+            return smin(structPat, represPat, sin(uTime) * 0.5 + 0.5) * 16.18 / length(z);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.x, uResolution.y);
+            
+            // Apply a series of Möbius transformations
+            vec2 z = uv;
+            z = mobius(z, vec2(cos(uTime), sin(uTime)), vec2(0.0), vec2(0.0), vec2(1.0));
+            z = mobius(z, vec2(1.0), vec2(0.1 * sin(uTime * 0.7), 0.1 * cos(uTime * 0.7)), vec2(-0.1, 0.1), vec2(1.0));
+            
+            // Generate interference pattern
+            float pattern = interference(z);
+            
+            // Color mapping
+            vec3 col1 = vec3(0.5, 0.8, 0.9);  // Light blue
+            vec3 col2 = vec3(0.9, 0.4, 0.3);  // Salmon
+            vec3 col3 = vec3(0.3, 0.7, 0.3);  // Green
+            
+            vec3 color = mix(col1, col2, pattern);
+            color = mix(color, col3, smoothstep(0.4, 0.6, abs(sin(pattern * PI + uTime))));
+            
+            // Apply hyperbolic warping
+            float warp = 1.0 / (1.0 - dot(uv, uv));
+            color *= smoothstep(0.0, 1.0, warp * 0.1);
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert('Unable to initialize WebGL. Your browser or machine may not support it.');
+        }
+
+        const vsSource = document.getElementById('vertexShader').textContent;
+        const fsSource = document.getElementById('fragmentShader').textContent;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+        }
+
+        const programInfo = {
+            program: shaderProgram,
+            attribLocations: {
+                vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+            },
+            uniformLocations: {
+                resolution: gl.getUniformLocation(shaderProgram, 'uResolution'),
+                time: gl.getUniformLocation(shaderProgram, 'uTime'),
+            },
+        };
+
+        const positions = new Float32Array([
+            -1.0, -1.0,
+             1.0, -1.0,
+            -1.0,  1.0,
+             1.0,  1.0,
+        ]);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            }
+        }
+
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+            resizeCanvasToDisplaySize(gl.canvas);
+
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(programInfo.program);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+            gl.uniform2f(programInfo.uniformLocations.resolution, gl.canvas.width, gl.canvas.height);
+            gl.uniform1f(programInfo.uniformLocations.time, time);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

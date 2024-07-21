@@ -12,77 +12,78 @@
 <body>
     <canvas id="glCanvas"></canvas>
 
-    <script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
-        in vec4 a_position;
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec4 a_position;
         void main() {
             gl_Position = a_position;
         }
     </script>
 
-    <script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+<script id="fragment-shader" type="x-shader/x-fragment">
 precision highp float;
 
 uniform vec2 u_resolution;
 uniform float u_time;
 
-out vec4 fragColor;
-
-#define PHI 1.618033988749895
-#define PI 3.14159265358979
-#define E 2.718281828459045
 #define MAX_STEPS 100
-#define MAX_DIST 20.
-#define SURF_DIST .618033988749895
+#define MAX_DIST 1000.0
+#define SURF_DIST 1.99
 
-float smin(float a, float b, float k) {
-    float h = max(k - abs(a - b), 0.0) / k;
-    return min(a, b) - h * h * h * k * (1.0 / 6.0);
-}
-
-// Trefoil knot parametric equation
-vec3 trefoil(float t) {
-    return vec3(
-        sin(t) + 2.0 * sin(2.0 * t),
-        cos(t) - 2.0 * cos(2.0 * t),
-        -sin(3.0 * t)
-    //) / PI;
-    ) * .5;
-}
-
-// Hyperbolic distance
+// Hyperbolic distance function
 float hyperbolicDist(vec3 p) {
     float len = length(p);
     len = clamp(len, 0.00001, 0.99999);
     return log((1.0 + len) / (1.0 - len));
 }
 
-// Mobius transformation
+// Mobius transformation in 3D
 vec3 mobius(vec3 p) {
     float r2 = dot(p, p);
-    float factor = 1.0 / (1.0 + r2);
-    return vec3(2.0 * p.xy, r2 - 1.0) * factor;
+    float denom = 1.0 + r2;
+    denom = max(denom, 0.00001);
+    return vec3(
+        2.0 * p.x / denom,
+        2.0 * p.y / denom,
+        (1.0 - r2) / denom
+    );
 }
 
-// Distance function
+// Icosahedron distance function
+float sdIcosahedron(vec3 p, float r) {
+    const float tau = 1.618033988749895;
+    const vec3 n1 = normalize(vec3(tau, 1, 0));
+    const vec3 n2 = normalize(vec3(-1, tau, 0));
+    const vec3 n3 = normalize(vec3(0, -1, tau));
+    
+    p = abs(p);
+    float a = dot(p, n1);
+    float b = dot(p, n2);
+    float c = dot(p, n3);
+    return max(max(a, b), c) - r;
+}
+
+// Distance function for our hyperbolic structure
 float getDistance(vec3 p) {
-    // Apply hyperbolic transformation
-    p = mobius(p);
-    
-    // Trefoil knot distance estimation
-    float minDist = 1000.0;
-    for (int i = 0; i < 100; i++) {
-        float t = float(i) / 100.0 * 2.0 * 3.14159;
-        vec3 knotPoint = trefoil(t + u_time * 0.1); // Animate the knot
-        knotPoint = mobius(knotPoint); // Apply hyperbolic transformation to knot
-        float dist = length(p - knotPoint) - 0.1; // Thickness of the knot
-        minDist = min(minDist, dist);
+    // Apply repeated Mobius transformations
+    for (int i = 0; i < 5; i++) {
+        p = mobius(p);
+        p = abs(p);
+        if (p.x < p.y) p.xy = p.yx;
+        if (p.x < p.z) p.xz = p.zx;
+        if (p.y < p.z) p.yz = p.zy;
+        p = p * 2.0 - 1.0;
     }
-    
-    // Combine with hyperbolic space structure
-    float hypDist = hyperbolicDist(p);
-    float spaceDist = sin(hypDist * 5. + u_time) * .1;
-    
-    return mix(minDist, spaceDist, spaceDist / hypDist) * PHI;
+
+    // Create a structure based on the {3,3,5} polytope
+    float d = sdIcosahedron(p, 0.5);
+    for (int i = 0; i < 5; i++) {
+        float angle = float(i) * 2.0 * 3.14159 / 5.0;
+        vec3 q = 0.8 * vec3(cos(angle), sin(angle), 0.5);
+        d = min(d, sdIcosahedron(p - q, 0.2));
+    }
+
+    // Apply hyperbolic distortion
+    return d * (1.0 - length(p) * length(p)) * 2. + 1.;
 }
 
 // Ray marching function
@@ -108,39 +109,52 @@ vec3 getNormal(vec3 p) {
     return normalize(n);
 }
 
-// Main coloring function
-vec3 getColor(vec3 p) {
-    float hd = hyperbolicDist(p);
-    
-    // Base color from hyperbolic distance
-    vec3 col = 0.5 + 0.5 * cos(hd * 2.0 + vec3(0, 2, 4));
-    
-    // Add detail based on the knot structure
-    float knotDist = getDistance(p);
-    col = mix(col, vec3(1.0, 0.5, 0.2), smoothstep(0.1, 0.0, knotDist));
-    
-    // Add interference-like patterns
-    col += 0.1 * sin(p * 10.0 + u_time);
-    
-    return col;
+// Blinn-Phong shading model
+vec3 blinnPhong(vec3 p, vec3 n, vec3 lightDir, vec3 viewDir) {
+    vec3 halfDir = normalize(lightDir + viewDir);
+    float spec = pow(max(dot(n, halfDir), 0.0), 32.0);
+    float diff = max(dot(n, lightDir), 0.0);
+    vec3 ambient = vec3(0.1);
+    vec3 diffuse = vec3(0.6) * diff;
+    vec3 specular = vec3(0.3) * spec;
+    return ambient + diffuse + specular;
+}
+
+// Enhanced function to visualize geodesics
+float geodesic(vec3 p) {
+    vec3 d = normalize(p);
+    float t1 = atan(d.y, d.x) * 7.0 / 3.14159;
+    float t2 = atan(d.z, length(d.xy)) * 7.0 / 3.14159;
+    float g1 = smoothstep(0.02, 0.0, abs(fract(t1) - 0.5));
+    float g2 = smoothstep(0.02, 0.0, abs(fract(t2) - 0.5));
+    return max(g1, g2);
+}
+
+// Poincaré disk projection
+vec2 poincareDisk(vec3 p) {
+    float r = length(p);
+    float theta = atan(p.y, p.x);
+    float rp = 2.0 * atan(r) / 3.14159;
+    return rp * vec2(cos(theta), sin(theta));
 }
 
 void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
     // Camera setup
-    vec3 ro = vec3(0, 0, 3.);
-    vec3 rd = normalize(vec3(uv, -1.));
+    vec3 ro = vec3(0, 0, -2812.);
+    vec3 rd = normalize(vec3(uv, 1));
 
     // Rotate camera
-    float t = u_time * 0.1;
+    float t = u_time * 0.2;
     mat3 rot = mat3(
         cos(t), 0, sin(t),
         0, 1, 0,
         -sin(t), 0, cos(t)
     );
+
     //ro *= rot;
-    //rd *= rot;
+    rd *= rot;
 
     // Perform ray marching
     float d = rayMarch(ro, rd);
@@ -154,26 +168,51 @@ void main() {
 
         // Lighting calculation
         vec3 lightDir = normalize(vec3(1, 2, -3));
-        float diff = max(dot(n, lightDir), 0.0);
+        vec3 viewDir = normalize(ro - p);
+        col = blinnPhong(p, n, lightDir, viewDir);
 
-        col = getColor(p);
-        col *= diff * 0.8 + 0.2;
+        // Color based on hyperbolic distance (convergent/divergent indicator)
+        float hd = hyperbolicDist(p);
+        vec3 hdColor = 0.5 + 0.5 * cos(hd + vec3(0, 2, 4));
+        col *= mix(hdColor, vec3(1.0), 0.5);
+
+        // Highlight exponential growth
+        col *= 1.0 + 0.2 * exp(-3.0 * hd);
+
+        // Add enhanced geodesic visualization
+        float geo = geodesic(p);
+        vec3 geoColor = mix(vec3(0.2, 0.5, 1.0), vec3(1.0, 0.5, 0.2), smoothstep(0.0, 5.0, hd));
+        //col = mix(col, geoColor, geo * 0.9);
 
         // Fade out based on distance
-        col *= 1.0 - d / (MAX_DIST);
+        col *= 1.0 - d / MAX_DIST;
     }
 
-    // Gamma correction and contrast enhancement
-    col = pow(col, vec3(0.4545));
-    col = smoothstep(0.0, 1.0, col);
+    // Add enhanced Poincaré disk model overlay
+    vec2 pdPos = vec2(0.75, -0.75); // Position of the overlay
+    vec2 pdUV = (uv - pdPos) * 4.0; // Scale for the overlay
+    if (length(pdUV) < 1.0) {
+        vec2 pd = poincareDisk(ro + rd * min(d, MAX_DIST));
+        if (length(pd) < 1.0) {
+            vec3 pdColor = vec3(0.5) + 0.5 * cos(length(pd) * 10.0 + vec3(0, 2, 4));
+            float pdGeo = smoothstep(0.05, 0.0, abs(fract(atan(pd.y, pd.x) * 5.0 / 3.14159) - 0.5));
+            pdColor = mix(pdColor, vec3(1.0), pdGeo * 0.5);
+            col = mix(col, pdColor, 0.8);
+        }
+        // Add a border to the Poincaré disk
+        float border = smoothstep(0.99, 1.0, length(pdUV));
+        col = mix(col, vec3(1.0), border);
+    }
 
-    fragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(col, 1.0);
 }
-    </script>
+</script>
+
+
 
     <script>
         const canvas = document.getElementById('glCanvas');
-        const gl = canvas.getContext('webgl2');
+        const gl = canvas.getContext('webgl');
 
         if (!gl) {
             alert('Unable to initialize WebGL. Your browser or machine may not support it.');
@@ -235,7 +274,7 @@ void main() {
         }
 
         function render(time) {
-            time *= 0.002;  // Convert to seconds
+            time *= 0.0005;  // Convert to seconds
 
             resizeCanvasToDisplaySize(gl.canvas);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
