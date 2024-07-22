@@ -1,0 +1,42 @@
+╔═══════════════════════════════════════════════════════════════╗
+║          C O M P U T A T I O N A L                            ║
+║        I R R E D U C I B I L I T Y                            ║
+║              I N   T H E   R U L I A D                        ║
+╠═══════════════════════════════════════════════════════════════╣
+║ ▓▒░ Simple Rules ░▒▓    ║    ▓▒░ Complex Outcomes ░▒▓         ║
+║                         ║                                     ║
+║ Rule 30:                ║    Generation 100:                  ║
+║ ███ ██ █ → █            ║    █ █  █ ████ ██ █ █  █████ ██ ██  ║
+║ ██ ██ █ → █             ║    ███ █ █   ██ ███ █ █    ██ █ █ █ ║
+║ █ ██ █ → █              ║    ▓▒░■□▪▫▴▵▶▷▼▽◀◁▻◅▸◂◃◆◇◈◉◊○●◌◍◎░▒▓║
+║ ██ █ → █                ║                                     ║
+║ █ █ → █                 ║    ┌─────────────────────────┐      ║
+║ ██ → ░                  ║    │ ╭───╮ ╭───╮ ╭───╮ ╭───╮ │      ║
+║ █ → █                   ║    │ │╭─╮│ │╭─╮│ │╭─╮│ │╭─╮│ │      ║
+║                         ║    │ ││█││ ││ ││ ││ ││ ││ ││ │      ║
+║ ▒░Initial State░▒       ║    │ │╰─╯│ │╰─╯│ │╰─╯│ │╰─╯│ │      ║
+║      █                  ║    │ ╰───╯ ╰───╯ ╰───╯ ╰───╯ │      ║
+║                         ║    └─────────────────────────┘      ║
+╠═════════════════════════╬═════════════════════════════════════╣
+║                         ║                                     ║
+║  Computation Process:   ║   Irreducibility Principle:         ║
+║                         ║                                     ║
+║  ┌───┐    ┌───┐    ┌───┐║   No shortcut exists to determine   ║
+║  │ 1 │ ───┤ 2 │ ───┤ 3 │║   the outcome without performing    ║
+║  └───┘    └───┘    └───┘║   each step of the computation.     ║
+║     │       │       │   ║                                     ║
+║     ▼       ▼       ▼   ║   ╭────────────────────────────╮    ║
+║  ┌───┐    ┌───┐    ┌───┐║   │ f(n) ≠ g(n) for any g(n)   │    ║
+║  │ 4 │ ───┤ 5 │ ───┤ 6 │║   │ simpler than f(n) itself   │    ║
+║  └───┘    └───┘    └───┘║   ╰────────────────────────────╯    ║
+║     │       │       │   ║                                     ║
+║     ▼       ▼       ▼   ║   Implications:                     ║
+║    ┌─┐     ┌─┐     ┌─┐  ║   1. Limits of prediction           ║
+║    │7│ ────│8│ ────│9│  ║   2. Emergence of complexity        ║
+║    └─┘     └─┘     └─┘  ║   3. Fundamental unpredictability   ║
+║                         ║   4. Computational equivalence      ║
+╠═════════════════════════╩═════════════════════════════════════╣
+║ In the Ruliad, simple rules can lead to complex, unpredictable ║
+║ outcomes. This phenomenon underlies the richness and diversity ║
+║ of computational processes throughout the universe.            ║
+╚═══════════════════════════════════════════════════════════════╝

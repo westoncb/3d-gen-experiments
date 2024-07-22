@@ -18,10 +18,7 @@
 
         #define MAX_STEPS 100
         #define MAX_DIST 100.0
-        #define SURF_DIST 1.
-        #define PHI 1.618033988749895
-        #define PI 3.14159265358979
-        #define E 2.718281828459045
+        #define SURF_DIST 0.01
 
         float smin(float a, float b, float k) {
             float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
@@ -55,20 +52,13 @@
             float torus = sdTorus(p.xzy, vec2(3.0, 0.5));
             
             // Combine shapes
-            float d = smin(sphere1, sphere2, 1.);
-            d = smoothstep(d, torus, 0.618);
+            float d = smin(sphere1, sphere2, 1.0);
+            d = smin(d, torus, 1.0);
             
             // Add some small bumps for texture
             d += 0.05 * sin(10.0 * p.x) * sin(10.0 * p.y) * sin(10.0 * p.z);
             
-            // cross eyes
-            return ((((d / PHI - PHI) / PHI - PHI)));
-
-            //return ((1. - (1. - (d / PHI - PHI) / PHI - PHI)) - PI) - PHI * PHI;
-            //return (1.0 - (1.0 - (1.0 - (1.0 - (d / (PHI) - PHI) / PHI - PHI) / PHI - PHI)) / PHI - PHI) / PHI;
-
-
-            //return (d / PHI) - PHI;
+            return d;
         }
 
         vec3 getNormal(vec3 p) {
@@ -97,11 +87,6 @@
             
             float d = raymarch(ro, rd);
             vec3 p = ro + rd * d;
-
-
-
-
-
             
             vec3 color = vec3(0.1, 0.2, 0.3);
             
