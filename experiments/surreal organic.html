@@ -59,16 +59,9 @@
             d = smoothstep(d, torus, 0.5);
             
             // Add some small bumps for texture
-            d += (.5) * sin(10.0 * p.x) * sin(10.0 * p.y) * sin(10.0 * p.z);
+            d += .05 * sin(10.0 * p.x) * sin(10.0 * p.y) * sin(10.0 * p.z);
             
-            // cross eyes
-            return ((((d / PHI - PHI) / PHI - PHI)));
-
-            //return ((1. - (1. - (d / PHI - PHI) / PHI - PHI)) - PI) - PHI * PHI;
-            //return (1.0 - (1.0 - (1.0 - (1.0 - (d / (PHI) - PHI) / PHI - PHI) / PHI - PHI)) / PHI - PHI) / PHI;
-
-
-            //return (d / PHI) - PHI;
+            return (d / PHI - PHI) / PHI - PHI;
         }
 
         vec3 getNormal(vec3 p) {
