@@ -18,10 +18,7 @@
 
         #define MAX_STEPS 100
         #define MAX_DIST 100.0
-        #define SURF_DIST 1.
-        #define PHI 1.618033988749895
-        #define PI 3.14159265358979
-        #define E 2.718281828459045
+        #define SURF_DIST 0.01
 
         float smin(float a, float b, float k) {
             float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
@@ -91,11 +88,6 @@
             float d = raymarch(ro, rd);
             vec3 p = ro + rd * d;
 
-
-
-
-
-            
             vec3 color = vec3(0.1, 0.2, 0.3);
             
             if(d < MAX_DIST) {
