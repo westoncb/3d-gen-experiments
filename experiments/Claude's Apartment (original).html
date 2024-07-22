@@ -18,6 +18,7 @@
         const float PI = 3.14159265359;
         const float EPSILON = 0.0001;
         const int MAX_STEPS = 100;
+        const int MAX_REFLECTIONS = 10;
         const float MAX_DIST = 100.0;
         const float SURF_DIST = 0.001;
 
@@ -53,7 +54,7 @@
                 1, 0, 0, 0,
                 0, 1, 0, 0,
                 0, 0, -1, 0,
-                0, 0, 2, 1
+                0, 0, 2.*c35, 1
             );
             else return mat4(
                 1, 0, 0, 0,
@@ -71,10 +72,33 @@
         // Scene SDF
         float get_dist(vec4 p) {
             float d = MAX_DIST;
-            for (int i = 0; i < 4; i++) {
-                vec4 n = reflection_335(i)[3];
-                d = min(d, sdf_hyperbolic_plane(p, n));
+            vec4 q = p;
+
+            for (int depth = 0; depth < MAX_REFLECTIONS; depth++) {
+                float dmin = MAX_DIST;
+                int imin = -1;
+
+                for (int i = 0; i < 4; i++) {
+                    mat4 refl = reflection_335(i);
+                    vec4 n = refl[3];
+                    float di = sdf_hyperbolic_plane(q, n);
+                    if (di < dmin) {
+                        dmin = di;
+                        imin = i;
+                    }
+                }
+
+                d = min(d, dmin);
+                
+                if (dmin > SURF_DIST) break; // Stop if we're far from any plane
+
+                // Apply the reflection
+                if (imin >= 0) {
+                    mat4 refl = reflection_335(imin);
+                    q = refl * q;
+                }
             }
+
             return d;
         }
 
