@@ -52,11 +52,11 @@
             float torus = sdTorus(p.xzy, vec2(3.0, 0.5));
             
             // Combine shapes
-            float d = smin(sphere1, sphere2, 1.);
+            float d = smin(sphere1, sphere2, 1.0);
             d = smoothstep(d, torus, 0.5);
             
             // Add some small bumps for texture
-            d += .05 * sin(10.0 * p.x) * sin(10.0 * p.y) * sin(10.0 * p.z);
+            d += 0.05 * sin(10.0 * p.x) * sin(10.0 * p.y) * sin(10.0 * p.z);
             
             return (d / PHI - PHI) / PHI - PHI;
         }
@@ -89,7 +89,7 @@
             vec3 p = ro + rd * d;
 
             vec3 color = vec3(0.1, 0.2, 0.3);
-            
+                        
             if(d < MAX_DIST) {
                 vec3 normal = getNormal(p);
                 vec3 lightDir = normalize(vec3(1, 1, -1));
