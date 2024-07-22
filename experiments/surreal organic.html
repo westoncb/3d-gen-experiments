@@ -56,10 +56,10 @@
             
             // Combine shapes
             float d = smin(sphere1, sphere2, 1.);
-            d = smoothstep(d, torus, 0.618);
+            d = smoothstep(d, torus, 0.5);
             
             // Add some small bumps for texture
-            d += 0.05 * sin(10.0 * p.x) * sin(10.0 * p.y) * sin(10.0 * p.z);
+            d += (.5) * sin(10.0 * p.x) * sin(10.0 * p.y) * sin(10.0 * p.z);
             
             // cross eyes
             return ((((d / PHI - PHI) / PHI - PHI)));
