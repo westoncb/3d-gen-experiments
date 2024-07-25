@@ -29,8 +29,8 @@ uniform float u_time;
 #define PI 3.14159265358979
 #define E 2.718281828459045
 const float EPSILON = 1e-7;
-const int MAX_STEPS = 5;
-const int MAX_REFLECTIONS = 8;
+const int MAX_STEPS = 7;
+const int MAX_REFLECTIONS = 3;
 const float MAX_DIST = 100.0;
 const float SURF_DIST = .1;
 
@@ -202,7 +202,7 @@ float get_dist(vec4 p) {
         d = min(d, layer);
     }
 
-    return d / PHI - 0.7;
+    return d / 2. - 0.5;
 }
 
 // Normal calculation
