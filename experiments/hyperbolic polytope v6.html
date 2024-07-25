@@ -25,9 +25,10 @@ precision highp float;
 uniform vec2 u_resolution;
 uniform float u_time;
 
-#define PHI 1.618033988749895
+
+// Raymarching params
 #define MAX_STEPS 100
-#define MAX_DIST 10000.0
+#define MAX_DIST 1000.
 #define SURF_DIST 1.
 
 // Hyperbolic distance function
@@ -76,15 +77,17 @@ float getDistance(vec3 p) {
     }
 
     // Create a structure based on the {3,3,5} polytope
-    float d = sdIcosahedron(p, 0.5);
+
+
+    float d = sdIcosahedron(p, .5); //2nd param is object radius
     for (int i = 0; i < 5; i++) {
         float angle = float(i) * 2.0 * 3.14159 / 5.0;
         vec3 q = 0.8 * vec3(cos(angle), sin(angle), 0.5);
         d = min(d, sdIcosahedron(p - q, 0.2));
     }
 
-    // Apply hyperbolic distortion
-    return d * (1.0 - length(p) * length(p)) * 2. + .99;
+    // Final shape construction (SDF)
+    return d * (1.0 - length(p) * length(p)) * 2. + 1.;
 }
 
 // Ray marching function
@@ -142,9 +145,14 @@ vec2 poincareDisk(vec3 p) {
 void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
+    
+
     // Camera setup
-    vec3 ro = vec3(0, 0, -1024.);
-    vec3 rd = normalize(vec3(uv, 1));
+    vec3 ro = vec3(0, 0, -1.); // Ray origin (distance on Z-axis)
+
+    vec3 rd = normalize(vec3(uv, 1.));
+
+
 
     // Rotate camera
     float t = u_time * 0.2;
@@ -153,8 +161,16 @@ void main() {
         0, 1, 0,
         -sin(t), 0, cos(t)
     );
-    ro *= rot;
+
+
+
+    // Rotate ray origin
+    //ro *= rot;
+
+    // Rotate ray direction
     rd *= rot;
+
+
 
     // Perform ray marching
     float d = rayMarch(ro, rd);
