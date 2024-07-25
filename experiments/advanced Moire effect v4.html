@@ -237,10 +237,10 @@ void main() {
     // Hyperbolic camera setup
     float time = u_time * 0.1;
     vec4 camera_path = vec4(sin(time), cos(time * 0.7), sin(time * 0.5), cos(time * 0.3));
-    vec4 ro = vec4(0.0, 0.0, 0.0, 1.0); // Start at the origin of hyperbolic space
+    vec4 ro = vec4(0.0, 0.0, .0, 0.0001); // Start at the origin of hyperbolic space
     ro = hyperbolic_translation(ro, camera_path);
     
-    vec4 rd = normalize(vec4(uv, 1.0, 0.0));
+    vec4 rd = normalize(vec4(uv, PHI, 0.0));
     
     // Apply quaternion rotation to the ray direction
     vec4 quat = vec4(sin(time*0.5), cos(time*0.3), sin(time*0.2), cos(time*0.4));
