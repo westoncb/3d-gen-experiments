@@ -28,11 +28,11 @@ uniform float u_time;
 #define PHI 1.618033988749895
 #define PI 3.14159265358979
 #define E 2.718281828459045
-const float EPSILON = 1e-2;
-const int MAX_STEPS = 128;
-const int MAX_REFLECTIONS = 10;
-const float MAX_DIST = 1000.0;
-const float SURF_DIST = .01;
+const float EPSILON = 1e-7;
+const int MAX_STEPS = 5;
+const int MAX_REFLECTIONS = 8;
+const float MAX_DIST = 100.0;
+const float SURF_DIST = .1;
 
 // Hyperbolic space utilities
 vec4 lorentz_product(vec4 u, vec4 v) {
@@ -202,7 +202,7 @@ float get_dist(vec4 p) {
         d = min(d, layer);
     }
 
-    return d / E - 0.08;
+    return d / PHI - 0.7;
 }
 
 // Normal calculation
@@ -237,10 +237,10 @@ void main() {
     // Hyperbolic camera setup
     float time = u_time * 0.1;
     vec4 camera_path = vec4(sin(time), cos(time * 0.7), sin(time * 0.5), cos(time * 0.3));
-    vec4 ro = vec4(0.0, 0.0, 0.0, -6.); // Start at the origin of hyperbolic space
+    vec4 ro = vec4(0.0, 0.0, 0.0, 1.0); // Start at the origin of hyperbolic space
     ro = hyperbolic_translation(ro, camera_path);
     
-    vec4 rd = normalize(vec4(uv, 0.0, -1.0));
+    vec4 rd = normalize(vec4(uv, 1.0, 0.0));
     
     // Apply quaternion rotation to the ray direction
     vec4 quat = vec4(sin(time*0.5), cos(time*0.3), sin(time*0.2), cos(time*0.4));
