@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Multiversal Ruliad Library</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #00ffff;
+            font-family: "Courier New", monospace;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">The Multiversal Ruliad Library<br>Infinite complexity across realities</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let ruliadCore, bookShelves = [], symbolCubes = [], infinityTunnels = [];
+        let clock = new THREE.Clock();
+        let uniforms;
+
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            camera.position.z = 15;
+
+            uniforms = {
+                time: { value: 1.0 },
+                resolution: { value: new THREE.Vector2() }
+            };
+
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+            pointLight.position.set(10, 10, 10);
+            scene.add(pointLight);
+        }
+
+        function createRuliadCore() {
+            const geometry = new THREE.IcosahedronGeometry(2, 3);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+
+                    void main() {
+                        vPosition = position;
+                        vNormal = normal;
+                        vec3 p = position;
+                        float noise = sin(10.0 * p.x + time) * cos(10.0 * p.y + time) * sin(10.0 * p.z + time) * 0.1;
+                        p += normal * noise;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+
+                    void main() {
+                        vec3 color = 0.5 + 0.5 * cos(time + vPosition.xyx + vec3(0,2,4));
+                        float pulse = sin(vPosition.x * 10.0 + vPosition.y * 10.0 + vPosition.z * 10.0 - time * 3.0) * 0.5 + 0.5;
+                        color *= pulse;
+                        color += vec3(0.1, 0.3, 0.6) * dot(vNormal, vec3(1.0, 1.0, 1.0));
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            ruliadCore = new THREE.Mesh(geometry, material);
+            scene.add(ruliadCore);
+        }
+
+        function createBookshelf(x, y, z) {
+            const shelfGeometry = new THREE.BoxGeometry(4, 6, 1);
+            const shelfMaterial = new THREE.MeshPhongMaterial({ color: 0x8b4513 });
+            const shelf = new THREE.Mesh(shelfGeometry, shelfMaterial);
+            shelf.position.set(x, y, z);
+
+            const bookGeometry = new THREE.BoxGeometry(0.5, 0.8, 0.2);
+            const bookColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+
+            for (let i = 0; i < 15; i++) {
+                const bookMaterial = new THREE.MeshPhongMaterial({ color: bookColors[i % bookColors.length] });
+                const book = new THREE.Mesh(bookGeometry, bookMaterial);
+                book.position.set(
+                    (Math.random() - 0.5) * 3,
+                    (Math.random() - 0.5) * 5,
+                    0.6
+                );
+                shelf.add(book);
+            }
+
+            scene.add(shelf);
+            bookShelves.push(shelf);
+        }
+
+        function createSymbolCube(x, y, z) {
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+
+                    float symbol(vec2 coord, float seed) {
+                        vec2 grid = fract(coord * 5.0) - 0.5;
+                        float r = length(grid);
+                        float theta = atan(grid.y, grid.x);
+                        return step(0.5, sin(theta * 8.0 + time + seed) * sin(r * 10.0 + time + seed));
+                    }
+
+                    void main() {
+                        float s = symbol(vUv, gl_FragCoord.x);
+                        vec3 color = vec3(s, s * 0.5, s * 0.2);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.set(x, y, z);
+            scene.add(cube);
+            symbolCubes.push(cube);
+        }
+
+        function createInfinityTunnel(x, y, z) {
+            const geometry = new THREE.TorusGeometry(1, 0.3, 16, 100);
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        vec3 p = position;
+                        float theta = atan(p.y, p.x);
+                        float r = length(p.xy);
+                        float z = p.z + sin(5.0 * theta + time) * 0.1;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p.x, p.y, z, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    varying vec2 vUv;
+                    void main() {
+                        vec2 uv = vUv * 2.0 - 1.0;
+                        float r = length(uv);
+                        float theta = atan(uv.y, uv.x);
+                        float pattern = sin(20.0 * theta + 5.0 * r - time * 3.0) * 0.5 + 0.5;
+                        vec3 color = vec3(pattern * 0.5, pattern * 0.3, pattern);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            const tunnel = new THREE.Mesh(geometry, material);
+            tunnel.position.set(x, y, z);
+            scene.add(tunnel);
+            infinityTunnels.push(tunnel);
+        }
+
+        function createScene() {
+            createRuliadCore();
+
+            for (let i = 0; i < 5; i++) {
+                createBookshelf(Math.random() * 20 - 10, Math.random() * 20 - 10, Math.random() * 20 - 10);
+                createSymbolCube(Math.random() * 20 - 10, Math.random() * 20 - 10, Math.random() * 20 - 10);
+                createInfinityTunnel(Math.random() * 20 - 10, Math.random() * 20 - 10, Math.random() * 20 - 10);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            uniforms.time.value = clock.getElapsedTime();
+
+            ruliadCore.rotation.x += 0.005;
+            ruliadCore.rotation.y += 0.003;
+
+            bookShelves.forEach((shelf, index) => {
+                shelf.rotation.y = Math.sin(uniforms.time.value * 0.5 + index) * 0.2;
+            });
+
+            symbolCubes.forEach((cube, index) => {
+                cube.rotation.x += 0.01;
+                cube.rotation.y += 0.01;
+                cube.rotation.z += 0.01;
+            });
+
+            infinityTunnels.forEach((tunnel, index) => {
+                tunnel.rotation.z = uniforms.time.value * 0.5;
+            });
+
+            camera.position.x = Math.sin(uniforms.time.value * 0.1) * 15;
+            camera.position.y = Math.cos(uniforms.time.value * 0.1) * 15;
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.resolution.value.x = renderer.domElement.width;
+            uniforms.resolution.value.y = renderer.domElement.height;
+        }
+
+        function init() {
+            initScene();
+            createScene();
+            animate();
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        init();
+    </script>
+</body>
+</html>

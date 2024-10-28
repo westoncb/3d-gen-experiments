@@ -155,15 +155,15 @@
             return mix(symbols, blendedShape, 0.5) / symbols * (1.0 - imaginationStrength / MAX_IMAGINATION + 0.61) / 7. + 0.03;
           }
 
-          float map(vec3 p) {
-            vec3 wp = mix(p, warpSpace(p), imaginationStrength / MAX_IMAGINATION);
-            vec3 param = wp + length(zappaFunction(wp.xz)) * 0.01;
-            float tyger = sdTyger(param);
-            float innocence = sdInnocence(param);
-            float blendedShape = smoothstep(tyger, innocence, duality);
-            float symbols = sin(p.x * symbolicComplexity) * cos(p.y * symbolicComplexity) * sin(p.z * symbolicComplexity);
-            return mix(symbols, blendedShape, 0.5) / symbols * (1.0 - imaginationStrength / MAX_IMAGINATION + 0.61) / 7. + 0.03;
-          }
+          // float map(vec3 p) {
+          //   vec3 wp = mix(p, warpSpace(p), imaginationStrength / MAX_IMAGINATION);
+          //   vec3 param = wp + length(zappaFunction(wp.xz)) * 0.01;
+          //   float tyger = sdTyger(param);
+          //   float innocence = sdInnocence(param);
+          //   float blendedShape = smoothstep(tyger, innocence, duality);
+          //   float symbols = sin(p.x * symbolicComplexity) * cos(p.y * symbolicComplexity) * sin(p.z * symbolicComplexity);
+          //   return mix(symbols, blendedShape, 0.5) / symbols * (1.0 - imaginationStrength / MAX_IMAGINATION + 0.61) / 7. + 0.03;
+          // }
 
             vec3 getNormal(vec3 p) {
                 const vec2 e = vec2(.001, 0);

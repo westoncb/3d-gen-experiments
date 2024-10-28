@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Sublime Ruliad: Beauty in Complexity</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        const fragmentShader = `
+            #ifdef GL_FRAGMENT_PRECISION_HIGH
+            precision highp float;
+            #else
+            precision mediump float;
+            #endif
+
+            uniform float time;
+            uniform vec2 resolution;
+
+            #define MAX_STEPS 300
+            #define MAX_DIST 100.0
+            #define SURF_DIST 0.001
+
+            // Smooth min function for organic blending
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // 3D Rotation function
+            mat3 rotMat(vec3 axis, float angle) {
+                axis = normalize(axis);
+                float s = sin(angle);
+                float c = cos(angle);
+                float oc = 1.0 - c;
+                return mat3(
+                    oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,
+                    oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,
+                    oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c
+                );
+            }
+
+            // Improved noise function
+            float hash(vec3 p) {
+                p = fract(p * 0.3183099 + .1);
+                p *= 17.0;
+                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+            }
+
+            float noise(vec3 x) {
+                vec3 i = floor(x);
+                vec3 f = fract(x);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                               mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                           mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                               mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+            }
+
+            // Fractal Brownian Motion
+            float fbm(vec3 p) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                float frequency = 1.0;
+                for (int i = 0; i < 7; i++) {
+                    value += amplitude * noise(p * frequency);
+                    p = rotMat(vec3(1.0, 0.5, 0.7), 0.1 * time) * p;
+                    amplitude *= 0.5;
+                    frequency *= 2.0;
+                }
+                return value;
+            }
+
+            // Crystal-like growth function
+            float crystalGrowth(vec3 p) {
+                p = rotMat(vec3(sin(time * 0.1), cos(time * 0.15), sin(time * 0.2)), time * 0.1) * p;
+                float d = length(p) - 1.0;
+                d += 0.1 * fbm(p * 5.0 + time * 0.1);
+                for (int i = 0; i < 5; i++) {
+                    float fi = float(i);
+                    vec3 q = p * (2.0 + sin(fi * 0.2 + time * 0.1));
+                    d = smin(d, length(q) - 0.5 - 0.1 * sin(fi + time), 0.3);
+                }
+                return d * 0.5;
+            }
+
+            // Fluid-like motion
+            float fluidMotion(vec3 p) {
+                p = rotMat(vec3(cos(time * 0.1), sin(time * 0.15), cos(time * 0.2)), time * 0.2) * p;
+                float d = length(p) - 1.5;
+                vec3 q = p;
+                for (int i = 0; i < 4; i++) {
+                    q = abs(q) - 0.3;
+                    q = rotMat(vec3(0.1, 0.2, 0.3), 0.4 * time) * q;
+                    d = smin(d, length(q) - 0.3, 0.3);
+                }
+                return d * 0.6;
+            }
+
+            // Main shape function
+            float ruliadShape(vec3 p) {
+                float crystal = crystalGrowth(p);
+                float fluid = fluidMotion(p);
+                float blend = 0.5 + 0.5 * sin(time * 0.2);
+                return mix(crystal, fluid, blend);
+            }
+
+            // Ray marching function
+            float rayMarch(vec3 ro, vec3 rd) {
+                float dO = 0.0;
+                for (int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = ruliadShape(p);
+                    dO += dS;
+                    if (dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+                return dO;
+            }
+
+            // Calculate normal
+            vec3 getNormal(vec3 p) {
+                float d = ruliadShape(p);
+                vec2 e = vec2(0.001, 0);
+                vec3 n = d - vec3(
+                    ruliadShape(p - e.xyy),
+                    ruliadShape(p - e.yxy),
+                    ruliadShape(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            // Beautiful color palette
+            vec3 getRuliadColor(vec3 p, vec3 n) {
+                vec3 col1 = vec3(0.1, 0.5, 0.7);  // Ocean blue
+                vec3 col2 = vec3(0.7, 0.3, 0.1);  // Warm amber
+                vec3 col3 = vec3(0.1, 0.5, 0.3);  // Forest green
+                vec3 col4 = vec3(0.6, 0.1, 0.4);  // Deep purple
+
+                float f = fbm(p * 2.0 + time * 0.1);
+                vec3 col = mix(mix(col1, col2, f), mix(col3, col4, sin(f * 3.14159)), 0.5 + 0.5 * sin(time * 0.1));
+
+                // Add iridescence
+                float fresnel = pow(1.0 - max(dot(n, normalize(-p)), 0.0), 5.0);
+                col += fresnel * vec3(0.2, 0.5, 0.7);
+
+                // Subtle pulsing glow
+                col += 0.05 * vec3(0.7, 0.5, 0.3) * (0.5 + 0.5 * sin(fbm(p * 3.0) * 10.0 - time));
+
+                return col;
+            }
+
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                vec2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+                
+                // Improved camera movement
+                float camDist = 4.0 + sin(time * 0.1);
+                vec3 ro = vec3(
+                    camDist * sin(time * 0.2),
+                    2.0 + sin(time * 0.15),
+                    camDist * cos(time * 0.2)
+                );
+                vec3 lookAt = vec3(0.0, sin(time * 0.1), 0.0);
+                vec3 forward = normalize(lookAt - ro);
+                vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+                vec3 up = cross(forward, right);
+                vec3 rd = normalize(forward + uv.x * right + uv.y * up);
+                
+                // Ray marching
+                float d = rayMarch(ro, rd);
+                
+                vec3 col = vec3(0.0);
+                
+                if (d < MAX_DIST) {
+                    vec3 p = ro + rd * d;
+                    vec3 n = getNormal(p);
+                    col = getRuliadColor(p, n);
+                    
+                    // Soft shadows and ambient occlusion
+                    float ao = 1.0 - fbm(p * 5.0) * 0.5;
+                    col *= ao;
+                    
+                    // Depth-based atmospheric effect
+                    col = mix(col, vec3(0.5, 0.7, 0.9), 1.0 - exp(-0.01 * d * d));
+                } else {
+                    // Sky-like background
+                    float t = uv.y * 0.5 + 0.5;
+                    col = mix(vec3(0.5, 0.7, 0.9), vec3(0.2, 0.3, 0.5), t);
+                    col += 0.1 * fbm(rd * 10.0 + time * 0.05) * vec3(1.0);
+                }
+                
+                // Subtle vignette
+                col *= 1.0 - 0.3 * length(uv);
+                
+                // Output to screen
+                fragColor = vec4(col, 1.0);
+            }
+
+            void main() {
+                mainImage(gl_FragColor, gl_FragCoord.xy);
+            }
+        `;
+
+        // Set up scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a plane that fills the screen
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            fragmentShader,
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            }
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Animation loop
+        function animate(time) {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+        animate(0);
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.resolution.value.set(width, height);
+        });
+    </script>
+</body>
+</html>
