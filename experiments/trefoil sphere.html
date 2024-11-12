@@ -129,7 +129,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
     // Camera setup
-    vec3 ro = vec3(0, 0, 3.);
+    vec3 ro = vec3(0, 0, 6.);
     vec3 rd = normalize(vec3(uv, -1.));
 
     // Rotate camera

@@ -92,7 +92,7 @@
                 d += arcaneSymbol(op.yz, 8.0) * 0.02;
                 d += arcaneSymbol(op.xz, 12.0) * 0.02;
                 
-                d += fbm(op * 4.0 + time * 0.2) * 0.05;
+                d *= fbm(op * 4.0 + time * 0.2) * 0.05;
                 
                 return d;
             }
