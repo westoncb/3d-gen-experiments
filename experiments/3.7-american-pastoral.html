@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>American Pastoral - Enhanced Raymarched Shader</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec4 aVertexPosition;
+        void main() {
+            gl_Position = aVertexPosition;
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        
+        uniform vec2 uResolution;
+        uniform float uTime;
+        
+        #define MAX_STEPS 200
+        #define MAX_DIST 100.0
+        #define SURF_DIST 0.001
+        #define PI 3.14159265359
+        
+        // Rotation matrices
+        mat3 rotateY(float theta) {
+            float c = cos(theta);
+            float s = sin(theta);
+            return mat3(
+                vec3(c, 0, s),
+                vec3(0, 1, 0),
+                vec3(-s, 0, c)
+            );
+        }
+        
+        mat3 rotateX(float theta) {
+            float c = cos(theta);
+            float s = sin(theta);
+            return mat3(
+                vec3(1, 0, 0),
+                vec3(0, c, -s),
+                vec3(0, s, c)
+            );
+        }
+        
+        mat3 rotateZ(float theta) {
+            float c = cos(theta);
+            float s = sin(theta);
+            return mat3(
+                vec3(c, -s, 0),
+                vec3(s, c, 0),
+                vec3(0, 0, 1)
+            );
+        }
+
+        // Hash and noise functions
+        float hash(float n) {
+            return fract(sin(n) * 43758.5453);
+        }
+        
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        
+        float hash(vec3 p) {
+            p = fract(p * 0.3183099 + 0.1);
+            p *= 17.0;
+            return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+
+        float noise(vec3 x) {
+            vec3 p = floor(x);
+            vec3 f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+            
+            float n = p.x + p.y * 157.0 + 113.0 * p.z;
+            return mix(
+                mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                    mix(hash(n + 157.0), hash(n + 158.0), f.x), f.y),
+                mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                    mix(hash(n + 270.0), hash(n + 271.0), f.x), f.y), f.z);
+        }
+
+        // Voronoi noise for more organic patterns
+        float voronoi(vec3 p) {
+            vec3 b = floor(p);
+            vec3 f = fract(p);
+            
+            float id = 0.0;
+            float res = 100.0;
+            
+            for(int k = -1; k <= 1; k++) {
+                for(int j = -1; j <= 1; j++) {
+                    for(int i = -1; i <= 1; i++) {
+                        vec3 offset = vec3(float(i), float(j), float(k));
+                        vec3 cell = b + offset;
+                        vec3 center = cell + hash(cell) * 0.5 + 0.5;
+                        vec3 diff = p - center;
+                        float d = length(diff);
+                        
+                        if(d < res) {
+                            res = d;
+                            id = hash(cell);
+                        }
+                    }
+                }
+            }
+            
+            return res;
+        }
+
+        // Fractional Brownian Motion
+        float fbm(vec3 p) {
+            float sum = 0.0;
+            float amp = 0.5;
+            float freq = 1.0;
+            
+            for(int i = 0; i < 7; i++) {
+                sum += amp * noise(p * freq);
+                amp *= 0.5;
+                freq *= 2.0;
+                p = p * 1.1 + vec3(0.7, 1.3, 2.1);
+            }
+            
+            return sum;
+        }
+        
+        // Smooth minimum function
+        float smin(float a, float b, float k) {
+            float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+            return mix(b, a, h) - k * h * (1.0 - h);
+        }
+        
+        // SDFs
+        float sdSphere(vec3 p, float r) {
+            return length(p) - r;
+        }
+        
+        float sdBox(vec3 p, vec3 b) {
+            vec3 q = abs(p) - b;
+            return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+        }
+        
+        float sdRoundBox(vec3 p, vec3 b, float r) {
+            vec3 q = abs(p) - b;
+            return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
+        }
+        
+        float sdCylinder(vec3 p, vec2 h) {
+            vec2 d = abs(vec2(length(p.xz), p.y)) - h;
+            return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+        }
+        
+        float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+            vec3 pa = p - a;
+            vec3 ba = b - a;
+            float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+            return length(pa - ba * h) - r;
+        }
+        
+        float sdPlane(vec3 p, vec3 n, float h) {
+            return dot(p, normalize(n)) - h;
+        }
+        
+        float sdTorus(vec3 p, vec2 t) {
+            vec2 q = vec2(length(p.xz) - t.x, p.y);
+            return length(q) - t.y;
+        }
+        
+        // Dynamic effects
+        float disturb(vec3 p, float amount, float speed) {
+            float timeScale = uTime * speed;
+            
+            // Create a disturbance field
+            float disturbance = 0.0;
+            
+            // Use multiple layers of noise
+            disturbance += noise(p * 0.5 + timeScale * 0.2) * 0.5;
+            disturbance += noise(p * 1.0 - timeScale * 0.1) * 0.25;
+            disturbance += noise(p * 2.0 + timeScale * 0.05) * 0.125;
+            
+            return disturbance * amount;
+        }
+        
+        // Violence pattern for the map distortion
+        float violencePattern(vec3 p) {
+            float pattern = 0.0;
+            
+            // Fast chaotic noise for violence
+            float fastTime = uTime * 2.0;
+            vec3 shiftedP = p + vec3(fastTime * 0.3, fastTime * 0.2, fastTime * 0.1);
+            
+            // Fractal noise for irregular patterns
+            pattern += fbm(shiftedP * 2.0) * 0.5;
+            
+            // Add voronoi for cell-like structures (suggests fragmentation)
+            pattern += voronoi(shiftedP * 3.0) * 0.3;
+            
+            // Add some high frequency disturbance
+            pattern += noise(shiftedP * 8.0) * 0.2;
+            
+            return pattern;
+        }
+        
+        // Flag wave function with more dramatic motion
+        float flagWave(vec3 p) {
+            float baseWave = sin(p.x * 5.0 + uTime * 1.0) * 0.15;
+            
+            // Add some chaotic motion occasionally
+            float chaosTime = sin(uTime * 0.2) * 0.5 + 0.5;
+            float chaosWave = sin(p.x * 8.0 + uTime * 3.0) * sin(p.y * 7.0 + uTime * 2.7) * 0.1;
+            
+            float wave = mix(baseWave, chaosWave, chaosTime);
+            wave *= smoothstep(0.0, 1.0, p.x); // Stronger at the end
+            
+            return wave;
+        }
+        
+        // American Dream vs Reality map function
+        float map(vec3 p) {
+            // Original position for reference
+            vec3 originalP = p;
+            
+            // Time variables for animation
+            float t = uTime;
+            float slowTime = t * 0.2;
+            float fastTime = t * 0.7;
+            
+            // Cycle between dream and nightmare (0.0 - 1.0)
+            float cycleAmount = sin(slowTime * 0.3) * 0.5 + 0.5;
+            
+            // Calculate disturbance amount based on cycle
+            float disturbAmount = mix(0.1, 1.5, cycleAmount);
+            
+            // === Ground and Environment ===
+            
+            // Ground plane with more dramatic displacement
+            float groundHeight = 0.0;
+            groundHeight -= fbm(p * 0.2 + vec3(0, 0, slowTime * 0.1)) * 0.5;
+            
+            // Add disturbance to ground
+            float groundDisturbance = disturb(p, disturbAmount, 1.0);
+            groundHeight -= groundDisturbance * cycleAmount;
+            
+            float ground = sdPlane(p - vec3(0, groundHeight, 0), vec3(0, 1, 0), 0.0);
+            
+            // === House (Old Rimrock) ===
+            
+            // House position with slight movement
+            vec3 housePos = p - vec3(0, 0.6 + sin(slowTime * 0.5) * 0.05, 0);
+            
+            // Basic house shape - more organic with rounded edges
+            float houseWidth = 1.6;
+            float houseHeight = 1.5;
+            float houseDepth = 1.4;
+            float cornerRadius = 0.05;
+            
+            float house = sdRoundBox(housePos, vec3(houseWidth, houseHeight, houseDepth), cornerRadius);
+            
+            // House details - windows and door
+            vec3 frontWindowPos = housePos - vec3(-houseWidth * 0.5, 0, houseDepth - 0.01);
+            float frontWindow = sdBox(frontWindowPos, vec3(0.5, 0.4, 0.1));
+            
+            vec3 doorPos = housePos - vec3(0.7, -houseHeight + 0.6, houseDepth - 0.01);
+            float door = sdBox(doorPos, vec3(0.3, 0.6, 0.1));
+            
+            // Cut windows and doors from house
+            house = max(house, -frontWindow);
+            house = max(house, -door);
+            
+            // Distort the house based on cycle
+            house += disturb(housePos, disturbAmount * 0.2, 0.5) * cycleAmount;
+            
+            // === Roof ===
+            vec3 roofPos = housePos - vec3(0, houseHeight + 0.3, 0);
+            float roof = sdBox(roofPos, vec3(houseWidth + 0.3, 0.4, houseDepth + 0.3));
+            
+            // Roof distortion
+            roof += disturb(roofPos, disturbAmount * 0.15, 0.7) * cycleAmount;
+            
+            // === Chimney ===
+            vec3 chimneyPos = housePos - vec3(-1.0, houseHeight + 0.9, -0.6);
+            float chimney = sdBox(chimneyPos, vec3(0.2, 0.6, 0.2));
+            
+            // === Flag and pole (American idealism) ===
+            vec3 polePos = p - vec3(2.5, 0.8, 1.0);
+            float pole = sdCylinder(polePos, vec2(0.05, 2.0));
+            
+            // Flag with more dynamic movement
+            vec3 flagPos = polePos;
+            flagPos.x += 0.6;
+            flagPos.y -= 0.2;
+            flagPos.z += flagWave(flagPos);
+            
+            float flag = sdBox(flagPos, vec3(0.6, 0.4, 0.03));
+            
+            // === Factory (the real America) ===
+            // Make the factory more prominent and threatening
+            vec3 factoryPos = p - vec3(4.0, 1.5, -5.0 + sin(slowTime) * 0.5);
+            factoryPos = rotateY(slowTime * 0.05) * factoryPos;
+            
+            float factory = sdBox(factoryPos, vec3(2.5, 1.5, 3.0));
+            
+            // Factory details - windows
+            for(int i = 0; i < 5; i++) {
+                vec3 windowPos = factoryPos;
+                windowPos.x += float(i) * 0.8 - 2.0;
+                windowPos.z += 3.0 - 0.01;
+                windowPos.y -= 0.3;
+                float factoryWindow = sdBox(windowPos, vec3(0.2, 0.2, 0.1));
+                factory = max(factory, -factoryWindow);
+            }
+            
+            // Factory chimney - more ominous
+            vec3 factoryChimneyPos = factoryPos - vec3(0.0, 2.0, 0.0);
+            float factoryChimney = sdCylinder(factoryChimneyPos, vec2(0.4, 1.5));
+            
+            // Apply violence distortion to factory
+            float factoryDistortion = violencePattern(factoryPos) * disturbAmount;
+            factory += factoryDistortion * 0.2 * cycleAmount;
+            factoryChimney += factoryDistortion * 0.15 * cycleAmount;
+            
+            // === Debris and distorted elements (representing social decay) ===
+            float debris = MAX_DIST;
+            
+            // Only show debris during nightmare cycle
+            if(cycleAmount > 0.4) {
+                // Add some broken pieces around the scene
+                for(int i = 0; i < 7; i++) {
+                    float fi = float(i);
+                    vec3 debrisPos = p - vec3(
+                        sin(fi * 1.9) * 4.0,
+                        0.2 + hash(fi) * 0.5,
+                        cos(fi * 2.3) * 4.0
+                    );
+                    
+                    // Rotate each piece randomly
+                    debrisPos = rotateY(fi * 1.3 + slowTime * (hash(fi + 0.5) - 0.5)) * debrisPos;
+                    debrisPos = rotateX(fi * 0.7 + slowTime * (hash(fi + 0.2) - 0.5)) * debrisPos;
+                    
+                    // Create irregular shapes
+                    float debrisPiece = sdBox(debrisPos, vec3(
+                        0.3 + hash(fi) * 0.3,
+                        0.1 + hash(fi + 0.1) * 0.2,
+                        0.2 + hash(fi + 0.2) * 0.3
+                    ));
+                    
+                    // Distort the debris
+                    debrisPiece += disturb(debrisPos, 0.3, 1.0 + hash(fi) * 0.5);
+                    
+                    // Add to scene with smooth blend
+                    debris = smin(debris, debrisPiece, 0.5);
+                }
+                
+                // Scale debris influence by cycle
+                debris = mix(MAX_DIST, debris, smoothstep(0.4, 0.8, cycleAmount));
+            }
+            
+            // === Cracks in reality (more visible) ===
+            float cracks = MAX_DIST;
+            
+            // Only show cracks during nightmare
+            if(cycleAmount > 0.3) {
+                // Create branching cracks in the ground
+                for(int i = 0; i < 5; i++) {
+                    float fi = float(i);
+                    
+                    // Starting positions of cracks
+                    vec3 crackStart = vec3(
+                        sin(fi * 2.7) * 3.0, 
+                        0.05, 
+                        cos(fi * 2.1) * 3.0
+                    );
+                    
+                    // Direction of crack propagation
+                    vec3 crackDir = normalize(vec3(
+                        sin(fi * 1.3),
+                        0.0,
+                        cos(fi * 1.7)
+                    ));
+                    
+                    // Length of the crack
+                    float crackLength = 4.0 + hash(fi) * 3.0;
+                    
+                    // Create the crack
+                    float crackDist = sdCapsule(p, crackStart, crackStart + crackDir * crackLength, 0.05);
+                    
+                    // Add some noise to the crack
+                    crackDist += noise(p * 10.0 + fi) * 0.02;
+                    
+                    // Combine cracks
+                    cracks = min(cracks, crackDist);
+                }
+                
+                // Make cracks more visible near surface
+                if(p.y < 0.2) {
+                    cracks -= (0.2 - p.y) * 0.1;
+                }
+                
+                // Scale crack influence by cycle
+                cracks = mix(MAX_DIST, cracks, smoothstep(0.3, 0.6, cycleAmount));
+            }
+            
+            // === Smoke from factory (more dramatic and threatening) ===
+            float smoke = MAX_DIST;
+            
+            // Position and animate the smoke
+            vec3 smokePos = p - vec3(4.0, 3.5 + sin(slowTime) * 0.3, -5.0);
+            smokePos.y -= uTime * 0.3; // Rising effect
+            
+            // Make the smoke twist and curl
+            float twist = smokePos.y * 0.2 + slowTime * 0.1;
+            smokePos.xz = mat2(cos(twist), -sin(twist), sin(twist), cos(twist)) * smokePos.xz;
+            
+            // Create billowing smoke shapes
+            for(int i = 0; i < 5; i++) {
+                float fi = float(i);
+                vec3 cloudPos = smokePos - vec3(
+                    sin(slowTime * 0.3 + fi) * 1.0,
+                    fi * 0.8,
+                    cos(slowTime * 0.2 + fi) * 1.0
+                );
+                
+                // Make smoke more organic with spheres
+                float smokeBall = sdSphere(cloudPos, 0.7 + 0.3 * sin(slowTime * 0.2 + fi));
+                
+                // Distort the smoke
+                smokeBall += fbm(cloudPos * 2.0 + slowTime * 0.1) * 0.3;
+                
+                // Combine smoke elements
+                smoke = smin(smoke, smokeBall, 1.0);
+            }
+            
+            // Make smoke darker and more ominous with increasing cycle
+            float smokeOpacity = mix(0.7, 0.3, cycleAmount);
+            smoke = mix(MAX_DIST, smoke, smokeOpacity);
+            
+            // === Symbolic elements ===
+            
+            // Broken American dream objects
+            float symbols = MAX_DIST;
+            
+            // Car (Cadillac/Levov's car) - appears distorted during nightmare
+            vec3 carPos = p - vec3(-3.0, 0.4, 3.0);
+            carPos = rotateY(slowTime * 0.1) * carPos;
+            
+            float carBody = sdRoundBox(carPos, vec3(1.0, 0.3, 0.5), 0.1);
+            float carTop = sdRoundBox(carPos - vec3(0.0, 0.35, 0.0), vec3(0.6, 0.2, 0.4), 0.05);
+            float car = smin(carBody, carTop, 0.1);
+            
+            // Apply distortion to car
+            car += disturb(carPos, disturbAmount * 0.3, 0.8) * cycleAmount;
+            
+            // Combine all symbols
+            symbols = min(symbols, car);
+            
+            // Combine elements
+            float scene = ground;
+            scene = min(scene, house);
+            scene = min(scene, roof);
+            scene = min(scene, chimney);
+            scene = min(scene, pole);
+            scene = min(scene, flag);
+            scene = min(scene, factory);
+            scene = min(scene, factoryChimney);
+            scene = min(scene, debris);
+            scene = min(scene, cracks);
+            scene = min(scene, symbols);
+            
+            // Add smoke as a soft field (for volumetric effect)
+            scene = mix(scene, smoke, smoothstep(0.3, 0.0, smoke) * 0.7);
+            
+            return scene;
+        }
+        
+        // Get material ID for coloring
+        float getMaterial(vec3 p) {
+            // 0: ground
+            // 1: house
+            // 2: roof
+            // 3: flag
+            // 4: factory
+            // 5: smoke
+            // 6: car
+            // 7: cracks
+            // 8: debris
+            
+            float t = uTime;
+            float slowTime = t * 0.2;
+            
+            // Get all distances
+            float ground = sdPlane(p - vec3(0, fbm(p * 0.2) * 0.3, 0), vec3(0, 1, 0), 0.0);
+            
+            vec3 housePos = p - vec3(0, 0.6, 0);
+            float house = sdRoundBox(housePos, vec3(1.6, 1.5, 1.4), 0.05);
+            
+            vec3 roofPos = housePos - vec3(0, 1.8, 0);
+            float roof = sdBox(roofPos, vec3(1.9, 0.4, 1.7));
+            
+            vec3 polePos = p - vec3(2.5, 0.8, 1.0);
+            vec3 flagPos = polePos - vec3(0.6, -0.2, 0);
+            flagPos.z += flagWave(flagPos);
+            float flag = sdBox(flagPos, vec3(0.6, 0.4, 0.03));
+            
+            vec3 factoryPos = p - vec3(4.0, 1.5, -5.0);
+            float factory = sdBox(factoryPos, vec3(2.5, 1.5, 3.0));
+            
+            vec3 smokePos = p - vec3(4.0, 3.5, -5.0);
+            smokePos.y -= uTime * 0.3;
+            float twist = smokePos.y * 0.2;
+            smokePos.xz = mat2(cos(twist), -sin(twist), sin(twist), cos(twist)) * smokePos.xz;
+            float smoke = sdSphere(smokePos, 1.0);
+            smoke += fbm(smokePos * 2.0) * 0.3;
+            
+            vec3 carPos = p - vec3(-3.0, 0.4, 3.0);
+            float car = sdRoundBox(carPos, vec3(1.0, 0.5, 0.5), 0.1);
+            
+            float cracks = MAX_DIST;
+            for(int i = 0; i < 3; i++) {
+                float fi = float(i);
+                vec3 crackStart = vec3(sin(fi * 2.7) * 3.0, 0.05, cos(fi * 2.1) * 3.0);
+                vec3 crackDir = normalize(vec3(sin(fi * 1.3), 0.0, cos(fi * 1.7)));
+                float crackLength = 4.0 + hash(fi) * 3.0;
+                float crackDist = sdCapsule(p, crackStart, crackStart + crackDir * crackLength, 0.05);
+                cracks = min(cracks, crackDist);
+            }
+            
+            float debris = MAX_DIST;
+            for(int i = 0; i < 5; i++) {
+                float fi = float(i);
+                vec3 debrisPos = p - vec3(sin(fi * 1.9) * 4.0, 0.2 + hash(fi) * 0.5, cos(fi * 2.3) * 4.0);
+                float debrisPiece = sdBox(debrisPos, vec3(0.3 + hash(fi) * 0.3, 0.1, 0.2 + hash(fi + 0.2) * 0.3));
+                debris = min(debris, debrisPiece);
+            }
+            
+            // Find the minimum distance
+            float minDist = ground;
+            float material = 0.0;
+            
+            if(house < minDist) { minDist = house; material = 1.0; }
+            if(roof < minDist) { minDist = roof; material = 2.0; }
+            if(flag < minDist) { minDist = flag; material = 3.0; }
+            if(factory < minDist) { minDist = factory; material = 4.0; }
+            if(smoke < minDist) { minDist = smoke; material = 5.0; }
+            if(car < minDist) { minDist = car; material = 6.0; }
+            if(cracks < minDist) { minDist = cracks; material = 7.0; }
+            if(debris < minDist) { minDist = debris; material = 8.0; }
+            
+            return material;
+        }
+        
+        // Normal calculation
+        vec3 getNormal(vec3 p) {
+            const float eps = 0.001;
+            const vec2 h = vec2(eps, 0);
+            
+            return normalize(vec3(
+                map(p + h.xyy) - map(p - h.xyy),
+                map(p + h.yxy) - map(p - h.yxy),
+                map(p + h.yyx) - map(p - h.yyx)
+            ));
+        }
+        
+        // Raymarching function
+        float rayMarch(vec3 ro, vec3 rd) {
+            float dO = 0.0;
+            
+            for(int i = 0; i < MAX_STEPS; i++) {
+                vec3 p = ro + rd * dO;
+                float dS = map(p);
+                dO += dS;
+                if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+            }
+            
+            return dO;
+        }
+        
+        // Soft shadows with improved quality
+        float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
+            float res = 1.0;
+            float t = mint;
+            
+            for(int i = 0; i < 32; i++) {
+                if(t > maxt) break;
+                float h = map(ro + rd * t);
+                if(h < 0.001) return 0.0;
+                res = min(res, k * h / t);
+                t += h;
+            }
+            
+            return res;
+        }
+        
+        // Ambient occlusion calculation
+        float calcAO(vec3 p, vec3 n) {
+            float occ = 0.0;
+            float weight = 1.0;
+            
+            for(int i = 0; i < 8; i++) {
+                float len = 0.01 + 0.02 * float(i * i);
+                float d = map(p + n * len);
+                occ += (len - d) * weight;
+                weight *= 0.85;
+            }
+            
+            return 1.0 - clamp(occ, 0.0, 1.0);
+        }
+        
+        // Get color for sky
+        vec3 getSkyColor(vec3 rd, float time) {
+            // Cycle between idyllic day and ominous sunset/storm
+            float cycleAmount = sin(time * 0.3) * 0.5 + 0.5;
+            
+            // Day colors
+            vec3 dayZenith = vec3(0.3, 0.5, 0.9);
+            vec3 dayHorizon = vec3(0.7, 0.8, 1.0);
+            
+            // Sunset/storm colors
+            vec3 nightZenith = vec3(0.1, 0.1, 0.2);
+            vec3 nightHorizon = vec3(0.5, 0.2, 0.1);
+            
+            // Interpolate between day and night based on cycle
+            vec3 zenithColor = mix(dayZenith, nightZenith, cycleAmount);
+            vec3 horizonColor = mix(dayHorizon, nightHorizon, cycleAmount);
+            
+            // Gradient from horizon to zenith
+            vec3 skyColor = mix(
+                horizonColor,
+                zenithColor,
+                smoothstep(0.0, 0.4, rd.y)
+            );
+            
+            // Add sun or stormy lighting
+            vec3 sunDir = normalize(vec3(0.8, 0.6, 0.2));
+            float sunIntensity = pow(max(dot(rd, sunDir), 0.0), 32.0);
+            
+            // Sun changes color based on cycle
+            vec3 sunColor = mix(
+                vec3(1.0, 0.9, 0.7), // Bright sun
+                vec3(0.8, 0.2, 0.1), // Blood-red sun
+                cycleAmount
+            );
+            
+            skyColor += sunColor * sunIntensity * (2.0 - cycleAmount);
+            
+            // Add more dramatic clouds during nightmare cycle
+            vec3 cloudPos = rd * (20.0 + cycleAmount * 10.0);
+            float clouds = fbm(cloudPos + vec3(time * 0.05, 0, 0));
+            
+            // Make clouds darker and more threatening during nightmare
+            float cloudThreshold = mix(0.45, 0.3, cycleAmount);
+            float cloudDensity = mix(0.4, 0.7, cycleAmount);
+            clouds = smoothstep(cloudThreshold, cloudThreshold + 0.2, clouds);
+            clouds *= smoothstep(-0.2, 0.2, rd.y); // Only in the sky
+            
+            // Cloud color changes from white to dark based on cycle
+            vec3 cloudColor = mix(
+                vec3(1.0), // White fluffy clouds
+                vec3(0.1, 0.1, 0.15), // Dark storm clouds
+                cycleAmount
+            );
+            
+            // Blend clouds with sky
+            skyColor = mix(skyColor, cloudColor, clouds * cloudDensity);
+            
+            // Lightning flashes during nightmare
+            if(cycleAmount > 0.6) {
+                float lightning = smoothstep(0.8, 1.0, sin(time * 5.0 + fbm(vec3(time) * 10.0) * 10.0));
+                skyColor += vec3(0.7, 0.7, 1.0) * lightning * cycleAmount;
+            }
+            
+            return skyColor;
+        }
+        
+        // Rendering function with enhanced materials
+        vec3 render(vec3 ro, vec3 rd) {
+            // Raymarch the scene
+            float d = rayMarch(ro, rd);
+            vec3 col;
+            
+            // Cycle between dream and nightmare
+            float cycleAmount = sin(uTime * 0.3) * 0.5 + 0.5;
+            
+            // If we hit something
+            if(d < MAX_DIST) {
+                vec3 p = ro + rd * d;
+                vec3 n = getNormal(p);
+                float material = getMaterial(p);
+                
+                // Material colors with dramatic shifts based on cycle
+                vec3 groundColor = mix(
+                    vec3(0.3, 0.5, 0.2), // Green grass
+                    vec3(0.2, 0.1, 0.05), // Dead grass/mud
+                    cycleAmount
+                );
+                
+                vec3 houseColor = mix(
+                    vec3(0.9, 0.9, 0.85), // White house
+                    vec3(0.5, 0.5, 0.5) * (0.9 - 0.4 * fbm(p * 2.0)), // Dirty/aged house
+                    cycleAmount
+                );
+                
+                vec3 roofColor = mix(
+                    vec3(0.4, 0.2, 0.1), // Brown roof
+                    vec3(0.2, 0.1, 0.1), // Dark roof
+                    cycleAmount
+                );
+                
+                vec3 factoryColor = mix(
+                    vec3(0.6, 0.3, 0.2), // Brick factory
+                    vec3(0.2, 0.2, 0.2), // Dark industrial
+                    cycleAmount
+                );
+                
+                vec3 smokeColor = mix(
+                    vec3(0.8, 0.8, 0.8), // White smoke
+                    vec3(0.1, 0.1, 0.1), // Black smoke
+                    cycleAmount
+                );
+                
+                vec3 flagColor = mix(
+                    vec3(0.8, 0.1, 0.1), // Bright red
+                    vec3(0.3, 0.05, 0.05), // Blood red
+                    cycleAmount
+                );
+                
+                vec3 carColor = mix(
+                    vec3(0.2, 0.3, 0.7), // Blue car
+                    vec3(0.3, 0.1, 0.1), // Rust/blood color
+                    cycleAmount
+                );
+                
+                vec3 crackColor = mix(
+                    vec3(0.2, 0.2, 0.1), // Earth
+                    vec3(0.7, 0.1, 0.0), // Fiery/bloody
+                    cycleAmount
+                );
+                
+                vec3 debrisColor = mix(
+                    vec3(0.6, 0.6, 0.5), // Concrete/rubble
+                    vec3(0.2, 0.1, 0.1), // Charred rubble
+                    cycleAmount
+                );
+                
+                // Assign color based on material ID
+                vec3 baseColor;
+                if(material < 0.5) baseColor = groundColor;
+                else if(material < 1.5) baseColor = houseColor;
+                else if(material < 2.5) baseColor = roofColor;
+                else if(material < 3.5) baseColor = flagColor;
+                else if(material < 4.5) baseColor = factoryColor;
+                else if(material < 5.5) baseColor = smokeColor;
+                else if(material < 6.5) baseColor = carColor;
+                else if(material < 7.5) baseColor = crackColor;
+                else baseColor = debrisColor;
+                
+                // Add some noise to the materials for texture
+                baseColor *= 0.8 + 0.2 * fbm(p * 5.0);
+                
+                // Lighting calculations
+                // Sun direction shifts during cycle
+                vec3 lightDir = normalize(vec3(
+                    0.8 - cycleAmount * 0.4,
+                    0.6 - cycleAmount * 0.3,
+                    0.2
+                ));
+                
+                // Light color shifts during cycle
+                vec3 lightColor = mix(
+                    vec3(1.0, 0.9, 0.7), // Warm sunlight
+                    vec3(0.7, 0.3, 0.2), // Reddish apocalyptic light
+                    cycleAmount
+                );
+                
+                // Diffuse lighting (Lambertian)
+                float diff = max(dot(n, lightDir), 0.0);
+                
+                // Specular reflection
+                vec3 reflectDir = reflect(-lightDir, n);
+                float spec = pow(max(dot(rd, -reflectDir), 0.0), 32.0);
+                
+                // Shadow calculation (softer during dream, harsher during nightmare)
+                float shadowSoftness = mix(16.0, 8.0, cycleAmount);
+                float shadow = softShadow(p, lightDir, 0.02, 5.0, shadowSoftness);
+                
+                // Ambient occlusion
+                float ao = calcAO(p, n);
+                
+                // Ambient light (darker during nightmare)
+                float ambient = mix(0.2, 0.05, cycleAmount);
+                
+                // Combine lighting
+                vec3 lighting = baseColor * ambient;
+                lighting += baseColor * diff * shadow * lightColor;
+                
+                // Add specular highlights
+                lighting += spec * lightColor * shadow * 0.3;
+                
+                // Apply ambient occlusion
+                lighting *= ao;
+                
+                // Distance fog that gets thicker during nightmare
+                float fogDensity = mix(0.015, 0.03, cycleAmount);
+                float fogFactor = 1.0 - exp(-fogDensity * d);
+                
+                // Fog color changes based on cycle
+                vec3 fogColor = getSkyColor(rd, uTime);
+                
+                // Apply the fog
+                col = mix(lighting, fogColor, fogFactor);
+                
+                // Add glowing cracks during nightmare
+                if(material > 6.5 && material < 7.5 && cycleAmount > 0.5) {
+                    float glow = 0.5 * cycleAmount;
+                    col += vec3(0.8, 0.2, 0.0) * glow;
+                }
+                
+            } else {
+                // Sky color
+                col = getSkyColor(rd, uTime);
+            }
+            
+            // Post-processing effects
+            
+            // Vignette (stronger during nightmare)
+            vec2 q = gl_FragCoord.xy / uResolution.xy;
+            float vignette = q.x * q.y * (1.0 - q.x) * (1.0 - q.y);
+            float vignetteFactor = mix(16.0, 8.0, cycleAmount);
+            col *= 0.5 + 0.5 * pow(vignette * vignetteFactor, 0.2);
+            
+            // Color grading - shifts from nostalgic/warm to cold/desaturated
+            vec3 colorGrading = mix(
+                vec3(1.1, 1.0, 0.9), // Warm/nostalgic
+                vec3(0.9, 0.8, 1.1), // Cold/blue
+                cycleAmount
+            );
+            col = mix(col, col * colorGrading, 0.5);
+            
+            // Contrast enhancement (more contrast during nightmare)
+            float contrastAmount = mix(0.1, 0.3, cycleAmount);
+            col = mix(vec3(0.5), col, 1.0 + contrastAmount);
+            
+            // Film grain (stronger during nightmare)
+            float grain = fract(sin(dot(q, vec2(12.9898, 78.233))) * 43758.5453);
+            float grainAmount = mix(0.03, 0.08, cycleAmount);
+            col += (grain - 0.5) * grainAmount;
+            
+            // Occasional glitch/distortion effect during nightmare
+            if(cycleAmount > 0.7) {
+                float glitchIntensity = smoothstep(0.7, 0.9, cycleAmount) * 
+                                    smoothstep(0.9, 0.7, fract(uTime * 2.7));
+                
+                // Horizontal line glitches
+                float lineGlitch = step(0.96, fract(gl_FragCoord.y * 0.01 + uTime * 10.0));
+                col = mix(col, 1.0 - col, lineGlitch * glitchIntensity);
+                
+                // Color separation/chromatic aberration
+                if(glitchIntensity > 0.5) {
+                    vec2 distOffset = vec2(
+                        sin(uTime * 40.0 + gl_FragCoord.y * 0.05),
+                        cos(uTime * 40.0 + gl_FragCoord.x * 0.05)
+                    ) * 0.01;
+                    
+                    // Use noise function instead of external texture
+                    float noiseR = hash(q + distOffset + vec2(uTime * 0.1, 0.0));
+                    float noiseB = hash(q - distOffset + vec2(0.0, uTime * 0.1));
+                    
+                    col.r = mix(col.r, col.r * (0.8 + 0.4 * noiseR), glitchIntensity * 0.5);
+                    col.b = mix(col.b, col.b * (0.8 + 0.4 * noiseB), glitchIntensity * 0.5);
+                }
+            }
+            
+            return col;
+        }
+        
+        void main() {
+            // Normalized pixel coordinates (from -1 to 1)
+            vec2 uv = (gl_FragCoord.xy / uResolution.xy) * 2.0 - 1.0;
+            uv.x *= uResolution.x / uResolution.y;
+            
+            // Cycle between dream and nightmare
+            float cycleAmount = sin(uTime * 0.3) * 0.5 + 0.5;
+            
+            // Camera setup with more dramatic movement during nightmare
+            float camDist = 7.0 + sin(uTime * 0.2) * 0.5 + cycleAmount * sin(uTime * 1.0) * 0.5;
+            float camHeight = 3.5 + sin(uTime * 0.3) * 0.2 + cycleAmount * sin(uTime * 0.7) * 0.5;
+            
+            // Camera motion becomes more erratic during nightmare
+            float camAngle = uTime * 0.1;
+            camAngle += cycleAmount * sin(uTime * 0.5) * 0.1;
+            
+            vec3 ro = vec3(
+                sin(camAngle) * camDist,
+                camHeight,
+                cos(camAngle) * camDist
+            );
+            
+            vec3 lookAt = vec3(0.0, 0.5 + sin(uTime * 0.2) * 0.1, 0.0);
+            
+            // During nightmare cycle, add some shake to lookAt
+            if(cycleAmount > 0.5) {
+                float shake = (cycleAmount - 0.5) * 2.0;
+                lookAt += vec3(
+                    sin(uTime * 10.0) * 0.1,
+                    sin(uTime * 8.0) * 0.05,
+                    sin(uTime * 12.0) * 0.1
+                ) * shake;
+            }
+            
+            // Camera frame
+            vec3 forward = normalize(lookAt - ro);
+            vec3 right = normalize(cross(vec3(0, 1, 0), forward));
+            vec3 up = cross(forward, right);
+            
+            // Ray direction with subtle lens distortion during nightmare
+            float fov = 0.6 + cycleAmount * 0.1;
+            vec2 uvDistort = uv;
+            
+            // Add lens distortion during nightmare
+            if(cycleAmount > 0.5) {
+                float distortAmount = (cycleAmount - 0.5) * 0.3;
+                float distort = dot(uv, uv) * distortAmount;
+                uvDistort *= (1.0 + distort);
+            }
+            
+            vec3 rd = normalize(forward + fov * (uvDistort.x * right + uvDistort.y * up));
+            
+            // Render the scene
+            vec3 col = render(ro, rd);
+            
+            // Gamma correction
+            col = pow(col, vec3(0.4545));
+            
+            // Output to screen
+            gl_FragColor = vec4(col, 1.0);
+        }
+    </script>
+
+    <script>
+        // Initialize WebGL
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+        if (!gl) {
+            alert('WebGL not supported in your browser');
+        }
+
+        // Resize canvas to full window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // No external textures needed
+
+        // Compile shader
+        function compileShader(source, type) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+
+            return shader;
+        }
+
+        // Create shader program
+        function createShaderProgram(vsSource, fsSource) {
+            const vertexShader = compileShader(vsSource, gl.VERTEX_SHADER);
+            const fragmentShader = compileShader(fsSource, gl.FRAGMENT_SHADER);
+
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program linking error:', gl.getProgramInfoLog(program));
+                return null;
+            }
+
+            return program;
+        }
+
+        // Initialize shader program
+        const vsSource = document.getElementById('vertexShader').textContent;
+        const fsSource = document.getElementById('fragmentShader').textContent;
+        const shaderProgram = createShaderProgram(vsSource, fsSource);
+
+        // Set up geometry (a simple quad that covers the viewport)
+        const positions = [
+            -1.0, -1.0,
+             1.0, -1.0,
+            -1.0,  1.0,
+             1.0,  1.0
+        ];
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        // Main render loop
+        let then = 0;
+        function render(now) {
+            now *= 0.001;  // Convert to seconds
+            const deltaTime = now - then;
+            then = now;
+
+            // Clear the canvas
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            // Activate shader program
+            gl.useProgram(shaderProgram);
+
+            // Bind the position buffer
+            const positionAttributeLocation = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(positionAttributeLocation);
+
+            // Set uniforms
+            const resolutionUniformLocation = gl.getUniformLocation(shaderProgram, 'uResolution');
+            gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
+
+            const timeUniformLocation = gl.getUniformLocation(shaderProgram, 'uTime');
+            gl.uniform1f(timeUniformLocation, now);
+            
+            // No texture binding needed
+
+            // Draw the quad
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // Continue the render loop
+            requestAnimationFrame(render);
+        }
+
+        // Start the render loop
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
